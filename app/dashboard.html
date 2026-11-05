@@ -1,0 +1,344 @@
+<!doctype html>
+<html lang="ru">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="theme-color" content="#100b1d">
+  <title>Не говори ответ · Кодоворот</title>
+  <style>
+    :root { color-scheme: dark; font-family: "Segoe UI", system-ui, sans-serif; color: #f7f2ff; background: #100b1d; --muted: #b5a9c8; --line: #39294e; --purple: #b981ff; --pink: #f487ef; }
+    * { box-sizing: border-box; }
+    html { scroll-behavior: smooth; }
+    body { margin: 0; background: radial-gradient(ellipse at 82% 13%, #44206955, transparent 40%), #100b1d; }
+    button, textarea, input, a { -webkit-tap-highlight-color: transparent; }
+    button, textarea, input { font: inherit; }
+    a { color: inherit; }
+    button, .button { cursor: pointer; }
+    a:focus-visible, button:focus-visible, textarea:focus-visible, input:focus-visible { outline: 3px solid #f487ef; outline-offset: 4px; }
+    button:disabled { opacity: .5; cursor: wait; }
+    [hidden] { display: none !important; }
+    .wrap { width: min(1160px, calc(100% - 64px)); margin: auto; }
+    .topbar { display: flex; align-items: center; justify-content: space-between; gap: 20px; padding: 20px 0; border-bottom: 1px solid var(--line); }
+    .team { display: flex; align-items: center; gap: 14px; text-decoration: none; }
+    .team img { width: 62px; height: 62px; object-fit: contain; }
+    .team strong { display: block; font-size: 18px; letter-spacing: .01em; }
+    .team span { color: var(--muted); font-size: 12px; letter-spacing: .06em; }
+    .hero { display: grid; grid-template-columns: 1.1fr .9fr; align-items: center; gap: 30px; padding: 50px 0 28px; }
+    .eyebrow { display: flex; align-items: center; gap: 10px; color: var(--pink); font: 12px Consolas, monospace; letter-spacing: .12em; text-transform: uppercase; }
+    .eyebrow::before { content: ""; width: 7px; height: 7px; background: currentColor; box-shadow: 10px -6px 0 #8554bd; margin-right: 8px; }
+    h1 { font-size: clamp(44px, 6vw, 76px); line-height: 1.03; letter-spacing: -.055em; margin: 20px 0; font-weight: 780; }
+    h1 span { color: var(--pink); }
+    .lead { color: #d5cbe2; font-size: 19px; line-height: 1.6; max-width: 470px; margin: 0 0 26px; }
+    .hero-actions { display: flex; gap: 12px; flex-wrap: wrap; }
+    .button { display: inline-flex; align-items: center; justify-content: center; gap: 12px; padding: 14px 21px; border: 1px solid transparent; border-radius: 8px; text-decoration: none; font-weight: 650; line-height: 1.3; }
+    .primary { background: linear-gradient(115deg, #a95aee, #db74d8); color: #160d20; box-shadow: 0 4px 0 #643576; }
+    .primary:hover { filter: brightness(1.12); }
+    .secondary { background: #20162f; border-color: #59416e; color: #f2e8ff; }
+    .secondary:hover, .action:hover { background: #352047; border-color: var(--purple); }
+    .hero-art { position: relative; min-width: 0; }
+    .hero-art::before { content: ""; position: absolute; inset: 12% 15%; border-radius: 50%; background: #8b3bda26; filter: blur(35px); }
+    .hero-art img { position: relative; width: 100%; max-height: 440px; object-fit: contain; display: block; }
+    .connection-strip { display: grid; grid-template-columns: 1fr 1fr; border: 1px solid var(--line); border-radius: 12px; background: #1a1227; margin: 0 0 48px; }
+    .connection { padding: 20px 24px; display: flex; align-items: flex-start; gap: 12px; }
+    .connection + .connection { border-left: 1px solid var(--line); }
+    .dot { width: 9px; height: 9px; background: #d7ab65; flex: 0 0 9px; margin-top: 6px; border-radius: 50%; }
+    .dot[data-state="ready"] { background: #84e8ba; box-shadow: 0 0 12px #84e8ba33; }
+    .dot[data-state="waiting"] { background: #b981ff; }
+    .dot[data-state="error"] { background: #f1928f; }
+    .connection strong { display: block; font-size: 15px; margin-bottom: 4px; }
+    .small { color: var(--muted); font-size: 13px; line-height: 1.6; margin: 0; }
+    .text-link { color: #d4b0ff; text-underline-offset: 3px; }
+    .section-heading { display: flex; justify-content: space-between; align-items: end; gap: 20px; margin-bottom: 22px; }
+    .section-heading h2 { font-size: clamp(26px, 4vw, 34px); letter-spacing: -.035em; margin: 0 0 7px; }
+    .section-heading p { color: var(--muted); margin: 0; font-size: 15px; line-height: 1.6; }
+    .tag { white-space: nowrap; color: #cca9f0; font: 11px Consolas, monospace; letter-spacing: .06em; padding-bottom: 4px; }
+    .playground { display: grid; grid-template-columns: 1fr 1fr; gap: 20px; align-items: start; }
+    .panel { border: 1px solid var(--line); background: #1a1227; border-radius: 12px; overflow: hidden; }
+    .panel-head { padding: 18px 22px; border-bottom: 1px solid var(--line); display: flex; align-items: center; justify-content: space-between; gap: 12px; }
+    .panel-head h3 { font-size: 16px; margin: 0; }
+    .panel-body { padding: 22px; }
+    .step { color: #d5a5ff; font: 12px Consolas, monospace; margin-right: 10px; }
+    .quiet-button { border: 0; background: transparent; color: #d2abff; padding: 3px 0; font-size: 13px; text-decoration: underline; text-underline-offset: 4px; }
+    label { display: block; color: #e0d3ef; font-size: 14px; margin-bottom: 10px; }
+    textarea { display: block; width: 100%; min-height: 190px; resize: vertical; padding: 16px; color: #f8f3ff; background: #100b1d; border: 1px solid #4d365f; border-radius: 8px; line-height: 1.6; font-size: 15px; }
+    textarea::placeholder { color: #8d7b9f; }
+    .photo-field { margin: 18px 0 8px; padding: 14px; border: 1px dashed #694681; border-radius: 8px; }
+    .photo-field label { margin-bottom: 8px; }
+    .photo-field input { width: 100%; max-width: 100%; color: #d5cbe2; font-size: 12px; }
+    .photo-field input::file-selector-button { margin-right: 10px; padding: 8px 10px; border: 1px solid #694183; border-radius: 5px; background: #301b43; color: #f2e8ff; cursor: pointer; }
+    .photo-field .small { margin-top: 8px; }
+    .response-actions { display: grid; gap: 8px; margin-top: 16px; }
+    .response-actions:empty { display: none; }
+    .response-actions .button { width: 100%; font-size: 14px; }
+    #current-problem { white-space: pre-wrap; overflow-wrap: anywhere; margin-bottom: 15px; padding: 10px 12px; border-left: 2px solid #a95aee; }
+    .form-actions { display: flex; justify-content: space-between; align-items: center; gap: 15px; margin: 16px 0 14px; }
+    .form-actions .button { font-size: 14px; }
+    .reply { color: #efe6fa; line-height: 1.7; white-space: pre-wrap; overflow-wrap: anywhere; min-height: 115px; margin: 0; }
+    .reply-placeholder { color: #a898ba; }
+    .action-list { margin-top: 20px; display: grid; gap: 9px; }
+    .action { width: 100%; display: flex; align-items: center; gap: 12px; text-align: left; padding: 13px 15px; color: #f0e5fa; background: #251833; border: 1px solid #443052; border-radius: 7px; font-size: 14px; transition: background .15s; }
+    .action .number { font: 11px Consolas, monospace; color: #b88bdb; }
+    .action .arrow { margin-left: auto; color: #c795ef; }
+    .hint-levels { display: flex; gap: 7px; margin: 0 0 4px 29px; flex-wrap: wrap; }
+    .hint-levels button { padding: 9px 11px; color: #e1b6ff; background: #301b43; border: 1px solid #694183; border-radius: 6px; font-size: 12px; }
+    .hint-levels button:hover { background: #4b285f; }
+    .privacy-note { margin: 20px 0 0; color: #a898ba; font-size: 12px; line-height: 1.65; }
+    .how { display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 25px; padding: 28px 0; margin-top: 32px; border-top: 1px solid var(--line); }
+    .how strong { display: block; font-size: 14px; margin-bottom: 6px; }
+    code { color: #dfb2ff; background: #2e1c40; border-radius: 4px; padding: 1px 5px; }
+    footer { display: flex; justify-content: space-between; align-items: center; gap: 20px; padding: 24px 0 30px; color: #9987ac; font-size: 12px; border-top: 1px solid var(--line); }
+    footer span:last-child { text-align: right; }
+    @media (prefers-reduced-motion: reduce) { html { scroll-behavior: auto; } * { transition: none !important; } }
+    @media (max-width: 760px) {
+      .wrap { width: calc(100% - 36px); }
+      .topbar { padding: 14px 0; }
+      .team img { width: 48px; height: 48px; }
+      .team strong { font-size: 16px; }
+      .hero { grid-template-columns: 1fr; padding-top: 34px; gap: 6px; }
+      .hero-copy { position: relative; z-index: 1; }
+      h1 { font-size: clamp(46px, 10vw, 68px); max-width: 510px; }
+      .lead { font-size: 17px; }
+      .hero-art { width: min(85%, 360px); justify-self: center; margin: 3px 0; }
+      .connection-strip { grid-template-columns: 1fr; margin-bottom: 34px; }
+      .connection { padding: 17px 20px; }
+      .connection + .connection { border-left: 0; border-top: 1px solid var(--line); }
+      .playground { grid-template-columns: 1fr; }
+      .section-heading { align-items: start; }
+      .tag { display: none; }
+      .panel-head { padding: 17px 18px; }
+      .panel-body { padding: 18px; }
+      .how { grid-template-columns: 1fr; gap: 17px; }
+      footer { align-items: start; flex-direction: column; gap: 8px; }
+      footer span:last-child { text-align: left; }
+    }
+    @media (max-width: 400px) { .team span { font-size: 10px; }  .hero-actions .button { flex: 1 1 100%; } .form-actions { align-items: start; flex-direction: column; } }
+  </style>
+</head>
+<body>
+  <div class="wrap">
+    <header class="topbar">
+      <a class="team" href="#" aria-label="Кодоворот — начало страницы">
+        <img src="/static/team.png" alt="Логотип команды Кодоворот" width="62" height="62">
+        <div><strong>Кодоворот</strong><span>ХАКАТОН «ИДЕЯ ФИКС»</span></div>
+      </a>
+    </header>
+    <main>
+      <section class="hero" aria-labelledby="product-title">
+        <div class="hero-copy">
+          <p class="eyebrow">Учиться · пробовать · понимать</p>
+          <h1 id="product-title">Не говори<br><span>ответ.</span></h1>
+          <p class="lead">Найди действие, на котором ошибся.<br>Разберись с подсказкой. Попробуй ещё раз.</p>
+          <div class="hero-actions">
+            <a class="button primary" href="https://max.ru/ideya_fiks_106_bot" target="_blank" rel="noopener noreferrer">Открыть бота в MAX <span aria-hidden="true">↗</span></a>
+            <a class="button secondary" href="#playground">Попробовать здесь</a>
+          </div>
+        </div>
+        <div class="hero-art"><img src="/static/bot.png" alt="Робот-помощник Не говори ответ с подсказками и закрытым ответом" width="1280" height="1280" fetchpriority="high"></div>
+      </section>
+      <section class="connection-strip" aria-label="Состояние подключения">
+        <div class="connection"><span class="dot" id="max-dot" aria-hidden="true"></span><div><strong id="max-status">Проверяем связь с MAX</strong></div></div>
+        <div class="connection"><span class="dot" id="ai-dot" data-state="waiting" aria-hidden="true"></span><div><strong id="ai-status">Проверяем подключение ИИ</strong><p class="small" id="ai-description">Учебный пример доступен без облака.</p></div></div>
+      </section>
+      <section id="playground" aria-labelledby="playground-title">
+        <div class="section-heading"><div><h2 id="playground-title">Поймай свою ошибку</h2><p>Пришли свои действия текстом или на фотографии. Выбери, как помочь.</p></div><span class="tag">&lt; ПРАКТИКА / &gt;</span></div>
+        <div class="playground">
+          <section class="panel" aria-labelledby="solution-title">
+            <div class="panel-head"><h3 id="solution-title"><span class="step">01</span>Твоё решение</h3><button class="quiet-button" type="button" data-learning-action="example">Взять пример</button></div>
+            <div class="panel-body">
+              <form id="solution-form">
+                <p class="small" id="current-problem" hidden></p>
+                <label for="solution-text" id="input-label">Условие задачи и действия в решении</label>
+                <textarea id="solution-text" maxlength="4000" placeholder="Напиши условие и своё решение. Оформляй как удобно. Для фотографии текст необязателен."></textarea>
+                <div class="photo-field">
+                  <label for="solution-photo">Или фотография твоего решения</label>
+                  <input id="solution-photo" type="file" accept="image/jpeg,image/png,image/webp">
+                  <p class="small" id="photo-note">JPEG, PNG или WebP, до 8 МБ. Условие и записи должны быть хорошо видны.</p>
+                  <button class="quiet-button" id="remove-photo" type="button" hidden>Убрать фотографию</button>
+                </div>
+                <div class="form-actions"><button class="button primary" id="send-solution" type="submit">Проверить действия <span aria-hidden="true">→</span></button><button class="quiet-button" type="button" data-learning-action="reset">Начать заново</button></div>
+              </form>
+              <p class="privacy-note">Текст и фото обрабатывает Yandex AI Studio. В SQLite сохраняются запись решения и учебный прогресс; фото не сохраняются. Не присылай личные данные.</p>
+              <button class="quiet-button" type="button" data-learning-action="forget">Удалить данные этой тренировки</button>
+            </div>
+          </section>
+          <section class="panel" aria-labelledby="reply-title">
+            <div class="panel-head"><h3 id="reply-title"><span class="step">02</span>Разбираемся вместе</h3><span class="tag" id="response-label">ОТВЕТ ПОМОЩНИКА</span></div>
+            <div class="panel-body">
+              <div class="reply reply-placeholder" id="reply" role="status" aria-live="polite">Возьми учебный пример или отправь свои действия. Подсказки появятся здесь.</div>
+              <div class="response-actions" id="response-actions" aria-label="Действия для текущего ответа"></div>
+              <div class="action-list" aria-label="Пять способов помощи">
+                <button class="action" type="button" data-learning-action="first_error"><span class="number">01</span>Где свернул не туда<span class="arrow" aria-hidden="true">↗</span></button>
+                <button class="action" id="show-hints" type="button" aria-expanded="false" aria-controls="hint-levels"><span class="number">02</span>Не говори ответ<span class="arrow" aria-hidden="true">＋</span></button>
+                <div class="hint-levels" id="hint-levels" hidden><button type="button" data-learning-action="hint1">Намёк</button><button type="button" data-learning-action="hint2">Подсказка</button><button type="button" data-learning-action="hint3">Подробный разбор</button></div>
+                <button class="action" type="button" data-learning-action="discovery"><span class="number">03</span>Поймай свою ошибку<span class="arrow" aria-hidden="true">↗</span></button>
+                <button class="action" type="button" data-learning-action="rematch"><span class="number">04</span>Реванш<span class="arrow" aria-hidden="true">↗</span></button>
+                <button class="action" type="button" data-learning-action="map"><span class="number">05</span>Карта слабых мест<span class="arrow" aria-hidden="true">↗</span></button>
+              </div>
+            </div>
+          </section>
+        </div>
+      </section>
+      <section class="how" aria-label="Как заниматься">
+        <div><strong><span class="step">01</span>Открой бота</strong><p class="small">В MAX отправь <code>/start</code> — появятся доступные команды.</p></div>
+        <div><strong><span class="step">02</span>Начни с примера</strong><p class="small">Возьми учебную задачу и попробуй разные уровни помощи.</p></div>
+        <div><strong><span class="step">03</span>Проверь понимание</strong><p class="small">Исправь ошибку, затем попробуй реванш на тот же навык.</p></div>
+      </section>
+    </main>
+    <footer><span>«Не говори ответ» · Команда «Кодоворот»</span></footer>
+  </div>
+  <script>
+    const byId = (id) => document.getElementById(id);
+    const reply = byId('reply');
+    const photo = byId('solution-photo');
+    const maxPhotoBytes = 8 * 1024 * 1024;
+    const photoTypes = new Set(['image/jpeg', 'image/png', 'image/webp']);
+    let checking = false;
+    let busy = false;
+    function showReply(text) { reply.textContent = text; reply.classList.remove('reply-placeholder'); }
+    function setBusy(value) {
+      busy = value;
+      document.querySelectorAll('button, #solution-photo, #solution-text').forEach((control) => { control.disabled = value; });
+      byId('solution-form').setAttribute('aria-busy', String(value));
+    }
+    function clearPhoto() {
+      photo.value = '';
+      byId('remove-photo').hidden = true;
+      byId('photo-note').textContent = 'JPEG, PNG или WebP, до 8 МБ. Условие и записи должны быть хорошо видны.';
+    }
+    function renderActions(rows) {
+      const container = byId('response-actions');
+      container.replaceChildren();
+      if (!Array.isArray(rows)) return;
+      rows.slice(0, 12).forEach((row) => {
+        if (!Array.isArray(row)) return;
+        row.slice(0, 5).forEach((item) => {
+          if (!item || item.type !== 'callback' || typeof item.text !== 'string' || typeof item.payload !== 'string' || item.payload.length > 100) return;
+          const button = document.createElement('button');
+          button.type = 'button';
+          button.className = 'button secondary';
+          button.textContent = item.text;
+          button.disabled = busy;
+          button.addEventListener('click', () => perform(item.payload));
+          container.append(button);
+        });
+      });
+    }
+    function updateInput(data, action) {
+      const mode = data.input_mode || 'problem_and_steps';
+      const labels = {problem_and_steps:'Условие задачи и действия в решении', pending_confirmation:'Сначала проверь распознанные строки справа', correction:'Исправление и продолжение решения', correction_with_reason:'Своё исправление и объяснение', photo_correction_reason:'Где ошибка и почему ты её исправляешь', steps:'Твои действия для новой задачи', continue:'Следующие действия в решении', complete:'Решение проверено'};
+      const placeholders = {problem_and_steps:'Напиши условие и своё решение. Оформляй как удобно.', pending_confirmation:'Проверь условие и действия в ответе бота. Для продолжения нажми кнопку подтверждения.', correction:'Пришли исправленное действие и, если готово, продолжение решения.', correction_with_reason:'Думаю, ошибка в раскрытии скобок. Я исправляю так: …, потому что …', photo_correction_reason:'Я исправил это действие на фото, потому что …', steps:'Твои вычисления', continue:'Продолжи с того места, на котором остановился.', complete:'Выбери «Реванш», чтобы проверить навык на новой задаче.'};
+      byId('input-label').textContent = labels[mode] || labels.problem_and_steps;
+      byId('solution-text').placeholder = placeholders[mode] || placeholders.problem_and_steps;
+      const context = byId('current-problem');
+      context.hidden = !data.problem || mode === 'problem_and_steps' || mode === 'pending_confirmation';
+      context.textContent = data.problem ? 'Задача: ' + data.problem : '';
+      if (mode === 'pending_confirmation' || mode === 'photo_correction_reason' || (action === 'discovery' && mode === 'correction_with_reason') || (mode === 'steps' && action !== 'message') || data.accepted) byId('solution-text').value = '';
+    }
+    async function updateStatus() {
+      if (checking) return;
+      checking = true;
+      const controller = new AbortController();
+      const timer = setTimeout(() => controller.abort(), 5000);
+      try {
+        const response = await fetch('/health/ready', { cache: 'no-store', signal: controller.signal });
+        const data = await response.json();
+        const maxReady = response.ok && data.mode === 'max' && data.status === 'running';
+        byId('max-status').textContent = maxReady ? 'Бот подключён к MAX' : data.mode === 'demo' ? 'Бот MAX недоступен' : data.status === 'failed' ? 'Связь с MAX требует проверки' : 'Подключаемся к MAX';
+        byId('max-dot').dataset.state = maxReady ? 'ready' : data.status === 'failed' ? 'error' : 'waiting';
+        const aiReady = data.ai === 'yandex';
+        byId('ai-status').textContent = aiReady ? 'ИИ готов к работе' : data.ai === 'unavailable' ? 'Связь с ИИ временно недоступна' : 'ИИ не подключён';
+        byId('ai-dot').dataset.state = aiReady ? 'ready' : 'waiting';
+        byId('ai-description').textContent = aiReady ? 'Пришли своё решение текстом или фотографией.' : 'Пять способов помощи можно проверить на учебном примере.';
+      } catch {
+        byId('max-status').textContent = 'Не удалось проверить подключение';
+        byId('max-dot').dataset.state = 'error';
+      } finally { clearTimeout(timer); checking = false; }
+    }
+    function readPhoto(file) {
+      return new Promise((resolve, reject) => {
+        const reader = new FileReader();
+        reader.onload = () => {
+          if (typeof reader.result !== 'string' || !reader.result.includes(',')) reject(new Error('photo unavailable'));
+          else resolve(reader.result.split(',', 2)[1]);
+        };
+        reader.onerror = () => reject(new Error('photo unavailable'));
+        reader.readAsDataURL(file);
+      });
+    }
+    async function perform(action, text, file) {
+      if (busy) return;
+      if (file && (!photoTypes.has(file.type) || file.size > maxPhotoBytes || file.size === 0)) {
+        showReply('Выбери фотографию JPEG, PNG или WebP размером до 8 МБ. Этот файл не отправлен.');
+        return;
+      }
+      setBusy(true);
+      showReply(file ? 'Читаем фотографию… Это может занять около минуты.' : 'Разбираемся…');
+      const controller = new AbortController();
+      const timer = setTimeout(() => controller.abort(), 150000);
+      let receivedResponse = false;
+      try {
+        if (action === 'example') {
+          const exampleResponse = await fetch('/learning/example', { signal: controller.signal });
+          if (!exampleResponse.ok) throw new Error('example unavailable');
+          const example = await exampleResponse.json();
+          byId('solution-text').value = example.problem + '\n\n' + example.steps.map((step, index) => (index + 1) + '. ' + step).join('\n');
+        }
+        const body = file ? {image_base64: await readPhoto(file), text: text || ''} : text === undefined ? {action} : {text};
+        const response = await fetch(file ? '/learning/photo' : text === undefined ? '/learning/action' : '/demo/message', {
+          method: 'POST', headers: {'Content-Type': 'application/json'}, body: JSON.stringify(body), signal: controller.signal
+        });
+        receivedResponse = true;
+        if (!response.ok) throw new Error('request unavailable');
+        const data = await response.json();
+        showReply(typeof data.reply === 'string' ? data.reply : 'Ответ пока недоступен. Попробуй позже.');
+        renderActions(data.buttons);
+        updateInput(data, action);
+        if (action === 'reset' || action === 'forget') byId('solution-text').value = '';
+        if (file || action === 'reset' || action === 'forget' || action === 'example') clearPhoto();
+      } catch (error) {
+        showReply(error.name === 'AbortError' ? 'Ответ задерживается. Запрос ещё может обрабатываться. Обнови страницу чуть позже, чтобы продолжить.' : 'Не удалось получить ответ. Попробуй позже.');
+        if (file && receivedResponse) clearPhoto();
+      } finally { clearTimeout(timer); setBusy(false); updateStatus(); }
+    }
+    document.querySelectorAll('[data-learning-action]').forEach((button) => { button.addEventListener('click', () => perform(button.dataset.learningAction)); });
+    byId('show-hints').addEventListener('click', () => {
+      const levels = byId('hint-levels');
+      levels.hidden = !levels.hidden;
+      byId('show-hints').setAttribute('aria-expanded', String(!levels.hidden));
+    });
+    photo.addEventListener('change', () => {
+      const file = photo.files[0];
+      if (!file) { clearPhoto(); return; }
+      byId('remove-photo').hidden = false;
+      byId('photo-note').textContent = file.name + ' · ' + (file.size / 1024 / 1024).toLocaleString('ru-RU', {maximumFractionDigits: 1}) + ' МБ';
+      if (!photoTypes.has(file.type) || file.size > maxPhotoBytes || file.size === 0) showReply('Поддерживаются JPEG, PNG и WebP размером до 8 МБ. Выбери другой файл.');
+    });
+    byId('remove-photo').addEventListener('click', clearPhoto);
+    byId('solution-form').addEventListener('submit', (event) => {
+      event.preventDefault();
+      const text = byId('solution-text').value.trim();
+      const file = photo.files[0];
+      if (text || file) perform('message', text, file);
+      else showReply('Напиши условие и свои действия или выбери фотографию решения.');
+    });
+    async function restoreState() {
+      setBusy(true);
+      const controller = new AbortController();
+      const timer = setTimeout(() => controller.abort(), 5000);
+      try {
+        const response = await fetch('/learning/state', {cache: 'no-store', signal: controller.signal});
+        if (!response.ok) throw new Error('state unavailable');
+        const data = await response.json();
+        updateInput(data, 'restore');
+        renderActions(data.buttons);
+        if (data.problem && typeof data.reply === 'string') showReply(data.reply);
+      } catch {
+        showReply('Не удалось восстановить состояние тренировки. Перед новой задачей нажми «Начать заново» и отправь своё решение ещё раз.');
+      } finally { clearTimeout(timer); setBusy(false); }
+    }
+    restoreState();
+    updateStatus();
+    setInterval(updateStatus, 5000);
+  </script>
+</body>
+</html>

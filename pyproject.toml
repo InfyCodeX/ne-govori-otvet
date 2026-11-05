@@ -1,0 +1,38 @@
+[build-system]
+requires = ["setuptools>=75"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "ne-govori-otvet"
+version = "0.6.5"
+description = "MAX learning bot for team Кодоворот, Идея фикс hackathon"
+requires-python = ">=3.11"
+dependencies = [
+  "fastapi>=0.115,<1",
+  "uvicorn>=0.34,<1",
+  "httpx>=0.28,<1",
+  "pydantic-settings>=2.8,<3",
+  "python-dotenv>=1.2,<2",
+  "filelock>=3.17,<4",
+  "Pillow>=12,<13",
+  "sympy>=1.14,<1.15",
+]
+
+[project.optional-dependencies]
+dev = ["ruff>=0.11,<1"]
+
+[tool.setuptools.packages.find]
+include = ["app*"]
+
+[tool.setuptools.package-data]
+app = ["*.html", "static/*.png"]
+
+[tool.ruff]
+target-version = "py311"
+line-length = 100
+
+[tool.ruff.lint]
+select = ["E", "F", "I", "UP", "B", "ASYNC"]
+
+[tool.ruff.lint.per-file-ignores]
+"app/integrations/max_client.py" = ["ASYNC109"]
