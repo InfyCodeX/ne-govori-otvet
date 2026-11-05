@@ -1,0 +1,28 @@
+<!doctype html>
+<html lang="ru"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Настройки ИИ · Не говори ответ</title>
+<style>
+*{box-sizing:border-box}body{margin:0;background:#100b1d;color:#f7f2ff;font:16px/1.6 "Segoe UI",sans-serif;padding:32px 20px}main{max-width:720px;margin:auto}a{color:#e6b5ff}h1{line-height:1.15;font-size:36px}.card{padding:24px;border:1px solid #49325f;border-radius:16px;background:#1c1429;margin:22px 0}.notice{color:#efc2ff}label{display:block;margin:18px 0 6px}input{width:100%;padding:13px;background:#110b1b;color:white;border:1px solid #71528e;border-radius:7px;font:inherit}button{padding:14px 20px;border:0;border-radius:8px;background:#d579e9;color:#190c24;font:inherit;font-weight:700;margin-top:22px;cursor:pointer}button:disabled{opacity:.5}small{color:#bcaeca}#result{white-space:pre-wrap}li+li{margin-top:12px}
+</style></head><body><main>
+<a href="/">← К тренировке</a><h1>Настройки Yandex AI Studio</h1>
+<div class="card notice"><strong>Ключ сохраняется только на этом компьютере.</strong><p>Сохранение формы не вызывает модель и не включает ИИ, если он был выключен. Текущее подключение показано на главной странице. Для применения нового ключа перезапустите приложение.</p></div>
+<ol>
+<li>Откройте <a href="https://aistudio.yandex.cloud/" target="_blank" rel="noopener noreferrer">Yandex AI Studio</a>, если нужно проверить доступ или заменить ключ. Вход и действия с платёжным аккаунтом подтверждаете вы.</li>
+<li>Выбранная модель — <strong>Qwen 3.6 35B A3B</strong> (<code>qwen3.6-35b-a3b</code>). Она используется для текста и изображений через облачный API. Качество распознавания рукописи зависит от фотографии, результат нужно сверять.</li>
+<li>Для API нужен действующий ключ с доступом к выбранной модели и ID каталога. Задайте ключу ограниченный срок действия. <a href="https://aistudio.yandex.ru/ru/docs/ai-studio/quickstart" target="_blank" rel="noopener noreferrer">Официальная инструкция</a>.</li>
+<li>Вставьте новый ключ в форму ниже. В чат и на скриншоты его отправлять не нужно. После сохранения перезапустите приложение. Форма не выполняет платную проверку ключа.</li>
+</ol>
+<form class="card" id="setup-form" autocomplete="off">
+<h2>Сохранить локально</h2><p><small>Права доступа API-ключа проверяются в кабинете Yandex AI Studio.</small></p>
+<label for="folder">ID каталога Yandex Cloud</label><input id="folder" name="folder" required pattern="[A-Za-z0-9_-]{1,64}" maxlength="64" spellcheck="false" autocomplete="off">
+<label for="key">Секретный API-ключ</label><input id="key" name="key" required type="password" minlength="10" maxlength="512" autocomplete="off" spellcheck="false">
+<button type="submit">Сохранить настройки</button><p id="result" role="status" aria-live="polite"></p>
+</form><p><small>Ключ хранится вне папки OneDrive. В ответе страницы, журнале и репозитории его значения нет.</small></p>
+<script>
+document.getElementById('setup-form').addEventListener('submit',async event=>{
+event.preventDefault();const button=event.target.querySelector('button'),result=document.getElementById('result');button.disabled=true;result.textContent='Сохраняем локально…';
+const controller=new AbortController(),timer=setTimeout(()=>controller.abort(),10000);
+try{const response=await fetch('/setup/ai',{method:'POST',headers:{'Content-Type':'application/json','X-Setup-Token':'__CSRF__'},body:JSON.stringify({folder_id:document.getElementById('folder').value.trim(),api_key:document.getElementById('key').value.trim()}),signal:controller.signal});
+const data=await response.json();if(!response.ok)throw new Error();document.getElementById('key').value='';result.textContent=data.message;
+}catch{result.textContent='Не удалось подтвердить сохранение настроек. Повторите попытку. Ключ в чат не отправляйте.';}finally{clearTimeout(timer);button.disabled=false;}});
+</script></main></body></html>

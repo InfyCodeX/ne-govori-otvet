@@ -1,0 +1,23 @@
+name: ne-govori-otvet
+
+services:
+  bot:
+    image: ne-govori-otvet
+    build: .
+    env_file: ${BOT_ENV_FILE:-.env}
+    environment:
+      DATABASE_PATH: /app/data/bot.sqlite3
+    ports:
+      - "127.0.0.1:8000:8000"
+    volumes:
+      - bot-data:/app/data
+      - ./certs:/app/certs:ro
+    init: true
+    restart: "no"
+    logging:
+      driver: json-file
+      options:
+        max-size: "5m"
+        max-file: "3"
+volumes:
+  bot-data:
