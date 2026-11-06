@@ -286,9 +286,9 @@ class LearningService:
             "Сохранённые подсказки доступны."
         )
 
-    def _provider_failure(self, error: Exception) -> TutorReply:
+    def _provider_failure(self, error: TutorError, *, stage: str = "") -> TutorReply:
         self.last_provider_error = True
-        kind = getattr(error, "kind", "protocol")
+        kind = error.kind
         reason = {
             "protocol": "формат ответа",
             "authentication": "доступ отклонён",
@@ -299,13 +299,33 @@ class LearningService:
         }.get(kind, "неизвестная причина")
         logger.warning(
             "ИИ · Проверка не завершена (%s, HTTP %s)",
-            reason,
-            getattr(error, "status_code", None) or "—",
+            "достигнут лимит токенов" if error.output_limit else reason,
+            error.status_code or "—",
         )
+        if error.output_limit:
+            messages = {
+                "analysis": (
+                    "Эта запись оказалась слишком сложной для проверки целиком. "
+                    "Пришли часть выражения и действия к ней "
+                    "или начни новую задачу командой /reset."
+                ),
+                "correction": (
+                    "Проверка исправления прервалась. Отправь исправленную строку ещё раз. "
+                    "Задача и подсказки сохранены."
+                ),
+                "explanation": (
+                    "Проверка пояснения прервалась. Отправь пояснение ещё раз, "
+                    "вычисления сохранены."
+                ),
+            }
+            return TutorReply(
+                text=messages.get(
+                    stage, "Обработка прервалась. Повтори попытку или пришли запись короче."
+                )
+            )
         if kind == "protocol":
             return TutorReply(
-                text="Не удалось надёжно прочитать результат проверки. "
-                "Попробуй повторить проверку или уточни запись условия и решения."
+                text="Проверка прервалась. Повтори попытку или пришли условие и действия текстом."
             )
         return self._unavailable()
 
@@ -728,6 +748,10 @@ class LearningService:
                 text="Условие принято. Пришли собственные действия в решении — "
                 "готовое решение за тебя не составляю."
             )
+        same_problem = bool(
+            previous and normalize(previous.problem) == normalize(candidate.problem)
+        )
+        correcting = bool(same_problem and previous.awaiting_correction)
         from app.arithmetic_check import checked_arithmetic
         from app.math_check import check_linear
         from app.quadratic_check import checked_quadratic
@@ -767,16 +791,23 @@ class LearningService:
             except TutorError as error:
                 if previous is None:
                     self.save(learner, candidate)
-                reply = self._provider_failure(error)
-                reply.buttons = [
-                    [
-                        {
-                            "type": "callback",
-                            "text": "Повторить проверку",
-                            "payload": "retry_analysis",
-                        }
+                reply = self._provider_failure(
+                    error, stage="correction" if correcting else "analysis"
+                )
+                if not error.output_limit and (
+                    previous is None
+                    or previous.pending_confirmation
+                    or (same_problem and previous.steps == candidate.steps and not correcting)
+                ):
+                    reply.buttons = [
+                        [
+                            {
+                                "type": "callback",
+                                "text": "Повторить проверку",
+                                "payload": "retry_analysis",
+                            }
+                        ]
                     ]
-                ]
                 return reply
             self.last_provider_error = False
             candidate.source = "ai"
@@ -827,14 +858,10 @@ class LearningService:
                         self.store.register_topic(learner, analysis.skill)
                 except TutorError:
                     logger.warning("Карта · Не удалось уточнить тему ошибки")
-        same_problem = bool(
-            previous and normalize(previous.problem) == normalize(candidate.problem)
-        )
         if same_problem:
             candidate.mistake_keys = previous.mistake_keys[:]
             candidate.rematch_skill = previous.rematch_skill
             candidate.practice_skill = previous.practice_skill
-        correcting = bool(same_problem and previous.awaiting_correction)
         discovering = bool(correcting and previous.self_discovery)
         if discovering:
             advanced = bool(
@@ -886,7 +913,9 @@ class LearningService:
                         explanation,
                     )
                 except TutorError as error:
-                    return self._provider_failure(error)
+                    previous.correction_draft = candidate.steps[:]
+                    self.save(learner, previous)
+                    return self._provider_failure(error, stage="explanation")
                 self.last_provider_error = False
                 if assessment.status != "accepted":
                     previous.correction_draft = candidate.steps[:]
@@ -1146,14 +1175,21 @@ class LearningService:
             result = await self._evaluate(learner, candidate, session)
             remaining = self.session(learner)
             if remaining and remaining.pending_confirmation:
-                result.buttons = [
+                retry = (
                     [
-                        {
-                            "type": "callback",
-                            "text": "Повторить проверку",
-                            "payload": "confirm_submission@" + remaining.pending_id,
-                        }
-                    ],
+                        [
+                            {
+                                "type": "callback",
+                                "text": "Повторить проверку",
+                                "payload": "confirm_submission@" + remaining.pending_id,
+                            }
+                        ],
+                    ]
+                    if result.buttons
+                    else []
+                )
+                result.buttons = [
+                    *retry,
                     [
                         {
                             "type": "callback",
@@ -1380,7 +1416,7 @@ class LearningService:
                     )
                 except TutorError as error:
                     if attempt or error.kind != "protocol" or error.status_code is not None:
-                        return self._provider_failure(error)
+                        return self._provider_failure(error, stage="correction")
                     logger.info("ИИ · Повтор разбора исправления после сбоя формата")
                 else:
                     break

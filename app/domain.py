@@ -37,10 +37,16 @@ class TutorPort(Protocol):
 
 class TutorError(Exception):
     def __init__(
-        self, message: str, *, kind: str = "protocol", status_code: int | None = None
+        self,
+        message: str,
+        *,
+        kind: str = "protocol",
+        status_code: int | None = None,
+        output_limit: bool = False,
     ) -> None:
         super().__init__(message)
         self.kind, self.status_code = kind, status_code
+        self.output_limit = output_limit
 
 
 class LearningStore(Protocol):
