@@ -45,7 +45,12 @@ def _math_record(line: str) -> str | None:
     )
     value = re.sub(r"\s+или\s+", " | ", value, flags=re.I)
     value = re.sub(r"\s+и\s+", " & ", value, flags=re.I)
-    if _MATH.fullmatch(value):
+    plain = re.sub(
+        r"\$|\\(?:[dt]?frac|sqrt|left|right|cdot|times|div)(?![A-Za-z])|\\[()[\]]",
+        "",
+        value,
+    )
+    if _MATH.fullmatch(plain):
         return value
     return None
 
@@ -111,7 +116,7 @@ def split_records(text: str) -> list[str]:
     text = re.sub(r"(?i)\s+(?=(?:действи[ея]|решение)\s*:)", "\n", text)
     text = re.sub(r"(?i)((?:действи[ея]|решение)\s*:)\s*(?=\S)", r"\1\n", text)
     pieces, cursor, list_closings, expected = [], 0, 0, 1
-    for match in re.finditer(r"(?<!\S)\d+[.)]\s+(?=[\w(−-])", text):
+    for match in re.finditer(r"(?<!\S)\d+[.)]\s+(?=[\w(−\\$-])", text):
         prefix = text[: match.start()]
         depth = prefix.count("(") - prefix.count(")") + list_closings
         at_line_start = not prefix.rsplit("\n", 1)[-1].strip()
@@ -120,7 +125,7 @@ def split_records(text: str) -> list[str]:
             re.search(r"(?i)(?:действи[ея]|решение)\s*:\s*$", prefix) or (cursor and expected > 1)
         )
         following = text[match.end() :].split("\n", 1)[0]
-        mathematical = bool(re.match(r"[\dA-Za-zхХ(−+\-]", following)) and bool(
+        mathematical = bool(re.match(r"[\dA-Za-zхХ(−+\\$\[\-]", following)) and bool(
             re.search(r"[=<>≤≥+*/^√]", following)
         )
         if depth <= 0 and mathematical and (at_line_start or inline_item):
@@ -145,9 +150,15 @@ def split_records(text: str) -> list[str]:
             depth += 1
         elif character in ")}]":
             depth = max(0, depth - 1)
-        comma = character == "," and re.match(
-            r"\s*[\dA-Za-zхХуУ(][\dA-Za-zхХуУ_₁₂ +*/^().−\-]*\s*[=<>≤≥]",
-            text[offset + 1 :],
+        comma = (
+            character == ","
+            and not (
+                offset and text[offset - 1].isdigit() and text[offset + 1 : offset + 2].isdigit()
+            )
+            and re.match(
+                r"\s*[\dA-Za-zхХуУ(][\dA-Za-zхХуУ_₁₂ +*/^().−\-]*\s*[=<>≤≥]",
+                text[offset + 1 :],
+            )
         )
         pieces.append("\n" if (character in ";→⇒" or comma) and not depth else character)
     text = re.sub(r"\s*=>\s*", "\n", "".join(pieces))
