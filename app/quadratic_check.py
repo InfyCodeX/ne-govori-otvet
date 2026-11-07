@@ -3,14 +3,21 @@
 import ast
 import re
 from fractions import Fraction
+from math import isqrt
 
 from app.learning_models import TutorAnalysis
 from app.math_check import MAX_AST_DEPTH, MAX_AST_NODES, MAX_FRACTION_BITS, MAX_INTEGER_DIGITS
+
+_SUM = {"x_1+x_2", "x_2+x_1"}
+_PRODUCT = {"x_1*x_2", "x_2*x_1"}
+_ROOTS = {"x_1", "x_2", "x"}
 
 
 def _clean(text: str) -> str:
     text = text.casefold().replace("х", "x").replace("−", "-")
     text = text.replace("²", "**2").replace("^", "**").replace("×", "*").replace("·", "*")
+    text = text.replace("÷", "/").replace(":", "/")
+    text = re.sub(r"√\s*(\([^()]*\)|\d+(?:[.,]\d+)?|d\b)", r"sqrt(\1)", text)
     return re.sub(r"(?<=\d),(?=\d)", ".", text)
 
 
@@ -18,11 +25,11 @@ def _polynomial(source: str, constants: dict[str, Fraction] | None = None) -> tu
     source = _clean(source).strip()
     if not source or len(source) > 1000:
         raise ValueError
-    if not re.fullmatch(r"[\d\s.xabc+*/()\-]+", source):
+    if not re.fullmatch(r"(?:sqrt|[\d\s.xabcd+*/()\-])+", source):
         raise ValueError
     if any(len(n.replace(".", "")) > MAX_INTEGER_DIGITS for n in re.findall(r"\d[\d.]*", source)):
         raise ValueError
-    source = re.sub(r"(?<=[\dx)])\s*(?=[xabc(])", "*", source)
+    source = re.sub(r"(?<=[\dx)])\s*(?=[xabcd(]|sqrt\()", "*", source)
     tree = ast.parse(source, mode="eval").body
     pending, count = [(tree, 0)], 0
     while pending:
@@ -61,6 +68,20 @@ def _polynomial(source: str, constants: dict[str, Fraction] | None = None) -> tu
         if isinstance(node, ast.UnaryOp) and isinstance(node.op, (ast.UAdd, ast.USub)):
             result = value(node.operand)
             return result if isinstance(node.op, ast.UAdd) else bound([-x for x in result])
+        if (
+            isinstance(node, ast.Call)
+            and isinstance(node.func, ast.Name)
+            and node.func.id == "sqrt"
+            and len(node.args) == 1
+            and not node.keywords
+        ):
+            number, linear, quadratic = value(node.args[0])
+            if number < 0 or linear or quadratic:
+                raise ValueError
+            root = Fraction(isqrt(number.numerator), isqrt(number.denominator))
+            if root * root != number:
+                raise ValueError
+            return root, Fraction(0), Fraction(0)
         if isinstance(node, ast.BinOp):
             left, right = value(node.left), value(node.right)
             if isinstance(node.op, ast.Add):
@@ -101,44 +122,106 @@ def _root_notation(text: str) -> str:
     return re.sub(r"x\s*_?\s*([12])", r"x_\1", text)
 
 
+def _number(source: str, constants: dict[str, Fraction]) -> Fraction:
+    number, linear, quadratic = _polynomial(source, constants)
+    if linear or quadratic:
+        raise ValueError
+    return number
+
+
+def _analysis(error: int | None, complete: bool, skill: str) -> TutorAnalysis:
+    arithmetic = skill == "Арифметика"
+    return TutorAnalysis(
+        status="error" if error else "correct",
+        first_error_step=error,
+        skill=skill,
+        complete=not error and complete,
+        question=(
+            "Как проверить, что соседние части равенства дают одно значение?"
+            if arithmetic
+            else "Как связаны корни с коэффициентами уравнения?"
+        ),
+        hint=(
+            "Вычисли каждую часть равенства отдельно и сравни значения."
+            if arithmetic
+            else "Проверь знаки и старший коэффициент. Проверь корни подстановкой."
+        ),
+        detail=(
+            "Пересчитай промежуточные значения и сверь их по порядку. При делении "
+            "проверь частное обратным умножением. Затем подставь результат в уравнение."
+            if arithmetic
+            else "Приведи уравнение к стандартному виду. Сверь формулы с коэффициентами "
+            "и проверь найденные корни подстановкой."
+        ),
+        discovery="Найди первую неверную запись и объясни применённое правило.",
+    )
+
+
+def quadratic_chain_error(problem: str, steps: list[str]) -> TutorAnalysis | None:
+    try:
+        _coefficients(problem)
+    except (ValueError, ArithmeticError, SyntaxError, RecursionError):
+        return None
+    for index, row in enumerate(steps, 1):
+        left, *parts = _root_notation(row).split("=")
+        if not 2 <= len(parts) <= 11 or re.sub(r"\s", "", left) not in _ROOTS | {"d", "sqrt(d)"}:
+            continue
+        previous = None
+        for part in parts:
+            try:
+                value = _number(part, {})
+            except (ValueError, ArithmeticError, SyntaxError, RecursionError):
+                previous = None
+                continue
+            if previous is not None and previous != value:
+                return _analysis(index, False, "Арифметика")
+            previous = value
+    return None
+
+
 def checked_quadratic(problem: str, steps: list[str]) -> TutorAnalysis | None:
     try:
-        constants = _coefficients(problem)
-        a, b, c = (constants[key] for key in ("a", "b", "c"))
+        current = _coefficients(problem)
+        a, b, c = (current[key] for key in ("a", "b", "c"))
         roots, unlabeled = {}, []
         error = None
+        skill = "Уравнения"
         for index, row in enumerate(steps, 1):
-            line = _root_notation(row)
-            if line.count("=") != 1:
+            parts = _root_notation(row).split("=")
+            if not 2 <= len(parts) <= 12:
                 return None
-            left, right = [part.strip() for part in line.split("=")]
-            key = re.sub(r"\s", "", left)
-            if key in {"x_1+x_2", "x_2+x_1", "x_1*x_2", "x_2*x_1", "x_1", "x_2", "x"}:
-                number, linear, quadratic = _polynomial(right, constants)
-                if linear or quadratic:
-                    return None
-                if "+" in key:
-                    correct = number == -b / a
-                elif "*" in key:
-                    correct = number == c / a
-                else:
-                    correct = a * number**2 + b * number + c == 0
-                    other = "x_2" if key == "x_1" else "x_1"
-                    if (
-                        key != "x"
-                        and other in roots
-                        and roots[other] == number
-                        and b * b != 4 * a * c
-                    ):
-                        correct = False
-                    roots[key] = number
-                    if key == "x":
-                        unlabeled.append(number)
-            else:
+            key = re.sub(r"\s", "", parts[0])
+            if key not in _SUM | _PRODUCT | _ROOTS and any("x" in part for part in parts):
                 equation = _coefficients(row)
-                correct = all(equation[k] / equation["a"] == constants[k] / a for k in ("b", "c"))
-            if not correct:
+                if equation["b"] / equation["a"] != b / a or equation["c"] / equation["a"] != c / a:
+                    error = index
+                    break
+                current = equation
+                continue
+            d = current["b"] ** 2 - 4 * current["a"] * current["c"]
+            constants = {**current, "d": d}
+            number = _number(parts[1], constants)
+            if key in _SUM:
+                valid = number == -b / a
+            elif key in _PRODUCT:
+                valid = number == c / a
+            elif key in _ROOTS:
+                other = "x_2" if key == "x_1" else "x_1"
+                repeated = key != "x" and roots.get(other) == number and d != 0
+                valid = a * number**2 + b * number + c == 0 and not repeated
+                roots[key] = number
+                if key == "x":
+                    unlabeled.append(number)
+            else:
+                valid = _number(parts[0], constants) == number
+                if not valid and not re.search(r"[abcd]", key):
+                    skill = "Арифметика"
+            if not valid:
                 error = index
+                break
+            if any(_number(part, constants) != number for part in parts[2:]):
+                error = index
+                skill = "Арифметика"
                 break
         complete = (
             "x_1" in roots
@@ -152,22 +235,7 @@ def checked_quadratic(problem: str, steps: list[str]) -> TutorAnalysis | None:
             complete = first + second == -b / a and first * second == c / a
         if b * b - 4 * a * c == 0 and roots:
             complete = True
-        return (
-            TutorAnalysis(
-                status="error" if error else "correct",
-                first_error_step=error,
-                skill="Уравнения",
-                complete=bool(not error and complete),
-                question="Как связаны сумма и произведение корней с коэффициентами уравнения?",
-                hint="Сверь знак и старший коэффициент в формулах Виета. "
-                "Проверь выбранные корни подстановкой.",
-                detail="Приведи уравнение к стандартному виду. Сопоставь сумму и произведение "
-                "корней с коэффициентами, затем проверь свою пару в исходном уравнении.",
-                discovery="Найди первую неверную запись и объясни применённое правило.",
-            )
-            if steps
-            else None
-        )
+        return _analysis(error, complete, skill) if steps else None
     except (ValueError, ArithmeticError, SyntaxError, RecursionError):
         return None
 
