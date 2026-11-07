@@ -250,8 +250,11 @@ class YandexTutor:
         image: bytes | None = None,
         mime_type: str | None = None,
         reasoning: bool = False,
+        extended: bool = False,
     ) -> dict[str, Any]:
         output_limit = 4096 if reasoning else MAX_OUTPUT_TOKENS
+        if extended:
+            output_limit *= 2
         content = [{"type": "input_text", "text": json.dumps(data, ensure_ascii=False)}]
         if image is not None:
             encoded = base64.b64encode(image).decode("ascii")
@@ -381,6 +384,18 @@ class YandexTutor:
             if not isinstance(result, dict) or not _clean_output(result):
                 raise ValueError
         except (ValueError, KeyError, TypeError, AttributeError, IndexError):
+            if output_limit_reached and not extended and self._budget_store is None:
+                logger.info("Яндекс AI · Повтор с увеличенным лимитом: %s", operation)
+                return await self._complete(
+                    system,
+                    data,
+                    schema,
+                    operation=operation,
+                    image=image,
+                    mime_type=mime_type,
+                    reasoning=reasoning,
+                    extended=True,
+                )
             logger.warning("Яндекс AI · Ответ не прочитан: %s (%s)", operation, failure)
             raise YandexError(
                 "Не удалось безопасно прочитать ответ ИИ.", output_limit=output_limit_reached

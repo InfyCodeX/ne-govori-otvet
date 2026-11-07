@@ -32,6 +32,8 @@ class IncomingEvent:
     action: str | None = None
     image_urls: tuple[str, ...] = ()
     unsupported_attachment: bool = False
+    message_id: str | None = None
+    has_other_attachments: bool = False
 
 
 def _is_int(value: object) -> bool:
@@ -105,12 +107,25 @@ def parse_update(update: dict[str, Any]) -> IncomingEvent | None:
                     "reject_submission",
                     "practice",
                     "retry_analysis",
+                    "back",
                 }
             )
         ):
             return None
+        body = message.get("body")
+        mid = body.get("mid") if isinstance(body, dict) else None
+        attachments = body.get("attachments") if isinstance(body, dict) else None
         return IncomingEvent(
-            chat_id=chat_id, text=None, user_id=user_id, callback_id=callback_id, action=action
+            chat_id=chat_id,
+            text=None,
+            user_id=user_id,
+            callback_id=callback_id,
+            action=action,
+            message_id=mid if isinstance(mid, str) and mid else None,
+            has_other_attachments=isinstance(attachments, list)
+            and any(
+                not isinstance(a, dict) or a.get("type") != "inline_keyboard" for a in attachments
+            ),
         )
     if kind != "message_created":
         return None

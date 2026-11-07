@@ -56,10 +56,11 @@ BUTTONS = [
     [{"type": "callback", "text": "Реванш", "payload": "rematch"}],
     [{"type": "callback", "text": "Карта слабых мест", "payload": "map"}],
 ]
+BACK_BUTTONS = [[{"type": "callback", "text": "Назад", "payload": "back"}]]
 HINT_BUTTONS = [
     [{"type": "callback", "text": title, "payload": f"hint{level}"}]
     for level, title in enumerate(("Намёк", "Подсказка", "Подробный разбор"), 1)
-]
+] + BACK_BUTTONS
 COMPLETION_BUTTONS = [
     [{"type": "callback", "text": "Новое задание", "payload": "reset"}],
     [{"type": "callback", "text": "Реванш", "payload": "rematch"}],
@@ -469,31 +470,26 @@ class LearningService:
             pending.pending_caption = text if same_task and previous.self_discovery else ""
             pending.confirmed_photo = None
             self.save(learner, pending)
-            transcript = "\n".join(f"{i}. {line}" for i, line in enumerate(extraction.steps, 1))
-            return TutorReply(
-                text="Я прочитал на фотографии:\n\nУсловие: "
-                + extraction.problem
-                + ("\nДействия:\n" + transcript if transcript else "\nДействия пока не найдены.")
-                + "\n\nЭто запись с твоего снимка, ещё не проверка решения. Всё прочитано верно? "
-                "Если нет, нажми «Исправить текст» и пришли правильную запись.",
-                buttons=[
-                    [
-                        {
-                            "type": "callback",
-                            "text": "Всё верно — проверить",
-                            "payload": "confirm_submission@" + pending.pending_id,
-                        }
-                    ],
-                    [
-                        {
-                            "type": "callback",
-                            "text": "Исправить текст",
-                            "payload": "reject_submission@" + pending.pending_id,
-                        }
-                    ],
-                ],
-            )
+            return self._show_extraction(extraction, pending.pending_id)
         return await self._evaluate(learner, candidate, previous)
+
+    @staticmethod
+    def _show_extraction(extraction: SubmissionExtraction, pending_id: str) -> TutorReply:
+        transcript = "\n".join(f"{i}. {line}" for i, line in enumerate(extraction.steps, 1))
+        return TutorReply(
+            text="Я прочитал на фотографии:\n\nУсловие: "
+            + extraction.problem
+            + ("\nДействия:\n" + transcript if transcript else "\nДействия пока не найдены.")
+            + "\n\nЭто запись с твоего снимка, ещё не проверка решения. Всё прочитано верно? "
+            "Если нет, нажми «Исправить текст» и пришли правильную запись.",
+            buttons=[
+                [{"type": "callback", "text": title, "payload": action + "@" + pending_id}]
+                for action, title in (
+                    ("confirm_submission", "Всё верно — проверить"),
+                    ("reject_submission", "Исправить текст"),
+                )
+            ],
+        )
 
     async def _handle(self, learner: str, text: str | None) -> TutorReply:
         if not text or not text.strip():
@@ -1078,6 +1074,29 @@ class LearningService:
             if current.pending_confirmation:
                 return TutorReply(text="Сначала подтверди распознанный текст фотографии.")
             return await self._evaluate(learner, current.model_copy(deep=True), current)
+        if action == "back":
+            current = self.session(learner)
+            if current and current.pending_confirmation and current.pending_submission:
+                return self._show_extraction(current.pending_submission, current.pending_id)
+            if current and current.analysis:
+                if current.analysis.complete:
+                    return TutorReply(text="Что дальше?", buttons=COMPLETION_BUTTONS)
+                if current.analysis.status == "error":
+                    return TutorReply(
+                        text="Выбери режим помощи или пришли исправление.", buttons=BUTTONS
+                    )
+            if current:
+                return TutorReply(
+                    text="Можно продолжить текущую задачу или начать новую.",
+                    buttons=[COMPLETION_BUTTONS[0], COMPLETION_BUTTONS[-1]],
+                )
+            return TutorReply(
+                text="Пришли новую задачу или открой учебный пример.",
+                buttons=[
+                    [{"type": "callback", "text": "Учебный пример", "payload": "example"}],
+                    COMPLETION_BUTTONS[-1],
+                ],
+            )
         if action in {"reset", "forget"}:
             self.store.forget_learning(learner, progress=action == "forget")
             return TutorReply(
@@ -1092,7 +1111,7 @@ class LearningService:
                 return TutorReply(
                     text="Пока нет наблюдений по конкретным темам. "
                     "Пришли свою задачу или открой /example.",
-                    buttons=self._topic_buttons(learner),
+                    buttons=self._topic_buttons(learner) + BACK_BUTTONS,
                 )
             text = "Карта слабых мест — наблюдения по твоим попыткам:\n\n"
             text += "\n".join(
@@ -1119,7 +1138,8 @@ class LearningService:
                 "Частота ошибок зависит и от количества попыток.",
                 buttons=[
                     [{"type": "callback", "text": "Выбрать тему тренировки", "payload": "practice"}]
-                ],
+                ]
+                + BACK_BUTTONS,
             )
         if action == "example":
             exercise = EXERCISES[0]
@@ -1210,7 +1230,7 @@ class LearningService:
                 text="Выбери тему из своей карты. Можно менять тему, не заканчивая задание."
                 if choices
                 else "Пока в карте нет тем. Пришли свою задачу или открой /example.",
-                buttons=choices,
+                buttons=choices + BACK_BUTTONS,
             )
         if action.startswith("practice_"):
             selected = action.removeprefix("practice_")
@@ -1221,7 +1241,7 @@ class LearningService:
             if skill is None:
                 return TutorReply(
                     text="Список тем изменился. Выбери тему из текущей карты.",
-                    buttons=self._topic_buttons(learner),
+                    buttons=self._topic_buttons(learner) + BACK_BUTTONS,
                 )
             if self.ai_active:
                 if not self._reserve_ai(learner):
@@ -1239,7 +1259,7 @@ class LearningService:
                 if problem is None:
                     return TutorReply(
                         text="Не удалось подготовить новую тренировку. Текущая задача сохранена.",
-                        buttons=self._topic_buttons(learner),
+                        buttons=self._topic_buttons(learner) + BACK_BUTTONS,
                     )
                 self.last_provider_error = False
                 source = "ai"
@@ -1254,7 +1274,8 @@ class LearningService:
                 text=f"Тренировка навыка «{skill}»:\n{problem}\n\nПришли свои вычисления.",
                 buttons=[
                     [{"type": "callback", "text": "Выбрать другую тему", "payload": "practice"}]
-                ],
+                ]
+                + BACK_BUTTONS,
             )
         if not session or not session.analysis:
             return TutorReply(text="Сначала пришли решение или открой /example.")
@@ -1310,7 +1331,8 @@ class LearningService:
             )
             return TutorReply(
                 text=f"Реванш — задача на тот же навык:\n{problem}\n\n"
-                "Пришли свои действия в решении. Готового ответа здесь нет."
+                "Пришли свои действия в решении. Готового ответа здесь нет.",
+                buttons=BACK_BUTTONS,
             )
         if analysis.status == "correct" and analysis.complete:
             return TutorReply(
@@ -1415,7 +1437,12 @@ class LearningService:
                         session.problem, session.steps, text
                     )
                 except TutorError as error:
-                    if attempt or error.kind != "protocol" or error.status_code is not None:
+                    if (
+                        attempt
+                        or error.output_limit
+                        or error.kind != "protocol"
+                        or error.status_code is not None
+                    ):
                         return self._provider_failure(error, stage="correction")
                     logger.info("ИИ · Повтор разбора исправления после сбоя формата")
                 else:
@@ -1471,10 +1498,12 @@ class LearningService:
 
     def _topic_buttons(self, learner: str, page: int = 0) -> list[list[dict[str, str]]]:
         skills = [row[0] for row in self._map_rows(learner)]
-        page = min(page, max(0, (len(skills) - 1) // 28))
-        buttons = topic_buttons(skills[page * 28 : (page + 1) * 28])
+        page_size = 27
+        last_page = (len(skills) - 1) // page_size
+        page = min(page, max(0, last_page))
+        buttons = topic_buttons(skills[page * page_size : (page + 1) * page_size])
         for target, label in ((page - 1, "Предыдущие темы"), (page + 1, "Следующие темы")):
-            if 0 <= target <= (len(skills) - 1) // 28:
+            if 0 <= target <= last_page:
                 buttons.append(
                     [
                         {
