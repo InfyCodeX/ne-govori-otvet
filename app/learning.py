@@ -750,7 +750,7 @@ class LearningService:
         correcting = bool(same_problem and previous.awaiting_correction)
         from app.arithmetic_check import checked_arithmetic
         from app.math_check import check_linear
-        from app.quadratic_check import checked_quadratic
+        from app.quadratic_check import checked_quadratic, quadratic_chain_error
 
         reviewed = reviewed_analysis(candidate.problem, candidate.steps)
         analysis = (
@@ -808,6 +808,13 @@ class LearningService:
             self.last_provider_error = False
             candidate.source = "ai"
             model_analysis = True
+            exact_error = quadratic_chain_error(candidate.problem, candidate.steps)
+            if exact_error and (
+                analysis.first_error_step is None
+                or exact_error.first_error_step <= analysis.first_error_step
+            ):
+                analysis = exact_error
+                model_analysis = False
         else:
             return TutorReply(
                 text="Проверка этой задачи сейчас недоступна. "

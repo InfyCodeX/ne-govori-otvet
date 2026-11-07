@@ -1,0 +1,79 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 900 675" role="img" aria-labelledby="title desc">
+  <title id="title">Архитектура чат-бота «Не говори ответ»</title>
+  <desc id="desc">Путь решения от ученика через MAX или Web-тренажёр к проверке, подсказкам и тренировке.</desc>
+  <defs>
+    <marker id="arrow" viewBox="0 0 10 10" markerWidth="7" markerHeight="7" refX="9" refY="5" orient="auto">
+      <path d="M 0 0 L 10 5 L 0 10 Z" fill="#52617a"/>
+    </marker>
+  </defs>
+  <style>
+    .links path { fill: none; stroke: #52617a; stroke-width: 1.6; stroke-linejoin: round; marker-end: url(#arrow) }
+    .links .return { stroke-dasharray: 5 4 }
+    .links .branch { marker-end: none }
+    .nodes rect, .nodes path { fill: #edf4ff; stroke: #7289b1; stroke-width: 1.4 }
+    .nodes .decision { fill: #e7e0fa; stroke: #8870b7 }
+    .nodes .activity { fill: #e9f7f3; stroke: #5e9485 }
+    text { font-family: Arial, sans-serif; fill: #192a43; text-anchor: middle }
+    .nodes text { font-size: 16px; font-weight: 600 }
+    .labels text { font-size: 14px; fill: #344763; paint-order: stroke; stroke: #fff; stroke-width: 4px; stroke-linejoin: round }
+  </style>
+  <rect width="900" height="675" rx="14" fill="#fff"/>
+  <g class="links">
+    <path data-link="U MAX" d="M 224 47 H 285"/>
+    <path data-link="U WEB" d="M 224 69 H 253 V 100 H 285"/>
+    <path data-link="MAX S" d="M 420 47 H 583 V 58 H 633"/>
+    <path data-link="WEB S" d="M 420 100 H 555 V 81 H 633"/>
+    <path data-link="S IN" d="M 727 99 V 123"/>
+    <path data-link="IN OCR" d="M 647 160 H 600"/>
+    <path data-link="OCR CONF" d="M 414 160 H 360"/>
+    <path data-link="CONF CHECK" d="M 259 188 V 242"/>
+    <path data-link="IN CHECK" d="M 727 197 V 213 H 313 V 242"/>
+    <path data-link="CHECK M" d="M 360 260 H 483"/>
+    <path data-link="CHECK AI" d="M 360 280 H 420 V 347 H 483"/>
+    <path data-link="M R" d="M 689 269 H 751 V 282 H 779"/>
+    <path data-link="AI R" d="M 689 345 H 751 V 329 H 772"/>
+    <path class="branch" d="M 811 358 V 616"/>
+    <path data-link="R H" d="M 811 441 H 784"/>
+    <path data-link="H FIX" d="M 610 441 H 553"/>
+    <path class="return" data-link="FIX CHECK" d="M 396 412 V 319 H 237 V 296"/>
+    <path class="return" data-link="R U" d="M 878 308 H 888 V 14 H 145 V 29"/>
+    <path data-link="R REMATCH" d="M 811 616 H 781"/>
+    <path data-link="R DB" d="M 811 528 H 784"/>
+    <path data-link="DB MAP" d="M 610 528 H 553"/>
+    <path data-link="MAP GEN" d="M 464 553 V 573 H 314 V 589"/>
+    <path data-link="REMATCH GEN" d="M 610 616 H 360"/>
+    <path class="return" data-link="GEN U" d="M 158 616 H 37 V 58 H 60"/>
+  </g>
+  <g class="nodes">
+    <g id="U"><rect class="activity" x="60" y="29" width="164" height="58" rx="9"/><text x="142" y="53">Ученик отправляет<tspan x="142" dy="20">условие и решение</tspan></text></g>
+    <g id="MAX"><rect x="285" y="28" width="135" height="38" rx="8"/><text x="352.5" y="53">Чат в MAX</text></g>
+    <g id="WEB"><rect x="285" y="81" width="135" height="38" rx="8"/><text x="352.5" y="106">Web-тренажёр</text></g>
+    <g id="S"><rect x="633" y="43" width="188" height="56" rx="9"/><text x="727" y="65">Сервер<tspan x="727" dy="20">Python / FastAPI</tspan></text></g>
+    <g id="IN"><path class="decision" d="M 727 123 L 807 160 L 727 197 L 647 160 Z"/><text x="727" y="165">Формат ввода</text></g>
+    <g id="OCR"><rect x="414" y="132" width="186" height="56" rx="9"/><text x="507" y="154">Yandex AI Studio ·<tspan x="507" dy="20">распознавание</tspan></text></g>
+    <g id="CONF"><rect class="activity" x="158" y="132" width="202" height="56" rx="9"/><text x="259" y="154">Ученик подтверждает<tspan x="259" dy="20">или исправляет запись</tspan></text></g>
+    <g id="CHECK"><rect x="158" y="242" width="202" height="54" rx="9"/><text x="259" y="264">Сервер разбирает<tspan x="259" dy="20">действия</tspan></text></g>
+    <g id="M"><rect x="483" y="241" width="206" height="56" rx="9"/><text x="586" y="263">Точная проверка ·<tspan x="586" dy="20">Python и SymPy</tspan></text></g>
+    <g id="AI"><rect x="483" y="315" width="206" height="60" rx="9"/><text x="586" y="338">Qwen · Yandex AI Studio<tspan x="586" dy="20">Responses API</tspan></text></g>
+    <g id="R"><path class="decision" d="M 811 258 L 878 308 L 811 358 L 744 308 Z"/><text x="811" y="305">Результат<tspan x="811" dy="19">проверки</tspan></text></g>
+    <g id="H"><rect x="610" y="412" width="174" height="58" rx="9"/><text x="697" y="428">Первое ошибочное<tspan x="697" dy="17">действие или</tspan><tspan x="697" dy="17">подсказка</tspan></text></g>
+    <g id="FIX"><rect class="activity" x="342" y="412" width="211" height="58" rx="9"/><text x="447.5" y="428">Ученик исправляет<tspan x="447.5" dy="17">действие и объясняет</tspan><tspan x="447.5" dy="17">правило</tspan></text></g>
+    <g id="DB"><path d="M 610 510 C 610 493 784 493 784 510 V 544 C 784 557 610 557 610 544 Z M 610 510 C 610 523 784 523 784 510"/><text x="697" y="531">SQLite ·<tspan x="697" dy="17">сессия и прогресс</tspan></text></g>
+    <g id="MAP"><rect x="375" y="503" width="178" height="50" rx="9"/><text x="464" y="534">Карта слабых мест</text></g>
+    <g id="REMATCH"><rect x="610" y="589" width="171" height="54" rx="9"/><text x="695.5" y="605">Реванш по<tspan x="695.5" dy="16">отработанному</tspan><tspan x="695.5" dy="16">навыку</tspan></text></g>
+    <g id="GEN"><rect x="158" y="589" width="202" height="54" rx="9"/><text x="259" y="611">Подбор и проверка<tspan x="259" dy="20">новой задачи</tspan></text></g>
+  </g>
+  <g class="labels">
+    <text data-label="MAX S" x="512" y="43">MAX Bot API</text>
+    <text data-label="WEB S" x="492" y="96">HTTP</text>
+    <text data-label="IN OCR" x="624" y="155">Фото</text>
+    <text data-label="IN CHECK" x="538" y="208">Текст</text>
+    <text data-label="CHECK M" x="422" y="239">Поддерживаемое<tspan x="422" dy="16">вычисление</tspan></text>
+    <text data-label="CHECK AI" x="463" y="387">Нужна проверка<tspan x="463" dy="16">моделью</tspan></text>
+    <text data-label="R H" x="758" y="398">Найдена ошибка</text>
+    <text data-label="R U" x="519" y="19">Нужны уточнения или следующие действия</text>
+    <text data-label="R REMATCH" x="743" y="579">Решение завершено</text>
+    <text data-label="MAP GEN" x="393" y="570">Выбор темы</text>
+    <text data-label="GEN U" x="96" y="565">Модель или<tspan x="96" dy="17">резервное</tspan><tspan x="96" dy="17">упражнение</tspan></text>
+  </g>
+</svg>
