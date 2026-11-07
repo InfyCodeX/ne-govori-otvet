@@ -209,7 +209,7 @@
       const container = byId('response-actions');
       container.replaceChildren();
       if (!Array.isArray(rows)) return;
-      rows.slice(0, 12).forEach((row) => {
+      rows.slice(0, 30).forEach((row) => {
         if (!Array.isArray(row)) return;
         row.slice(0, 5).forEach((item) => {
           if (!item || item.type !== 'callback' || typeof item.text !== 'string' || typeof item.payload !== 'string' || item.payload.length > 100) return;
@@ -293,6 +293,10 @@
         showReply(typeof data.reply === 'string' ? data.reply : 'Ответ пока недоступен. Попробуй позже.');
         renderActions(data.buttons);
         updateInput(data, action);
+        if (action === 'back') {
+          byId('hint-levels').hidden = true;
+          byId('show-hints').setAttribute('aria-expanded', 'false');
+        }
         if (action === 'reset' || action === 'forget') byId('solution-text').value = '';
         if (file || action === 'reset' || action === 'forget' || action === 'example') clearPhoto();
       } catch (error) {
