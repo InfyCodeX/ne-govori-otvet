@@ -43,6 +43,7 @@ ACTION_NAMES = {
     "reject_submission": "Исправить текст фото",
     "practice": "Выбор темы тренировки",
     "retry_analysis": "Повторить проверку",
+    "back": "Назад",
 }
 
 
@@ -58,6 +59,10 @@ def event_label(event: IncomingEvent) -> str:
     if command and command[0].startswith("/"):
         return command[0] if command[0] in COMMANDS else "Неизвестная команда"
     return "Текст"
+
+
+def keyboard_key(chat_id: int) -> str:
+    return "max_keyboard:" + learner_key("chat", chat_id)
 
 
 def message_parts(text: str) -> list[str]:
@@ -186,9 +191,10 @@ class Poller:
             learner = learner_key("max", event.user_id or event.chat_id)
             key = event_key(update)
             command = (event.text or "").split(maxsplit=1)[:1]
-            reset = event.action in {"reset", "forget"} or (
-                command and command[0].casefold() in {"/start", "/reset", "/forget"}
-            )
+            reset = command and command[0].casefold() in {"/start", "/reset", "/forget"}
+            if event.action in {"reset", "forget"} and event.message_id:
+                menu = self._keyboard(event.chat_id)
+                reset = menu is not None and event.message_id == menu["id"]
             if reset and key not in self._resets:
                 self._resets.append(key)
                 self._revisions[learner] = self._revisions.get(learner, 0) + 1
@@ -225,6 +231,11 @@ class Poller:
                 self.store.finish(key, "skipped")
                 continue
             label = event_label(event)
+            keyboard = self._keyboard(event.chat_id)
+            if event.message_id and keyboard is not None and event.message_id != keyboard["id"]:
+                self.store.finish(key, "skipped")
+                logger.info("MAX · Устаревшая кнопка: %s", label)
+                continue
             logger.info("MAX · Получено: %s", label)
             request = asyncio.create_task(self._event_reply(event, learner))
             self._active[learner] = request
@@ -248,6 +259,7 @@ class Poller:
             try:
                 parts = message_parts(reply.text)
                 superseded = False
+                sent = None
                 for index, part in enumerate(parts):
                     if index:
                         await asyncio.sleep(max(0.0, self.next_send_at - time.monotonic()))
@@ -270,14 +282,14 @@ class Poller:
                         else:
                             kwargs["image_url"] = self.welcome_image_url
                     try:
-                        await self.client.send_message(**kwargs)
+                        sent = await self.client.send_message(**kwargs)
                     except MaxApiError as exc:
                         if exc.status_code == 400 and (
                             "image_url" in kwargs or "image_token" in kwargs
                         ):
                             kwargs.pop("image_url", None)
                             kwargs.pop("image_token", None)
-                            await self.client.send_message(**kwargs)
+                            sent = await self.client.send_message(**kwargs)
                         else:
                             raise
             except MaxAuthError as exc:
@@ -311,8 +323,54 @@ class Poller:
                     logger.info("MAX · Отправка отменена: %s", label)
                 elif parts:
                     logger.info("MAX · Ответ отправлен: %s", label)
+                    if reply.buttons and isinstance(sent, dict):
+                        message = sent.get("message", {})
+                        body = message.get("body", {}) if isinstance(message, dict) else {}
+                        mid = body.get("mid") if isinstance(body, dict) else None
+                        if isinstance(mid, str) and mid:
+                            image = (
+                                {"token": kwargs["image_token"]}
+                                if "image_token" in kwargs
+                                else {"url": kwargs["image_url"]}
+                                if "image_url" in kwargs
+                                else None
+                            )
+                            await self._move_keyboard(keyboard, event, mid, image)
+                    elif label in {
+                        "/reset",
+                        "/forget",
+                        "Новая задача",
+                        "Удалить учебные данные",
+                    }:
+                        await self._move_keyboard(keyboard, event)
+                    elif label in {"Подтвердить фото", "Исправить текст фото"} and hasattr(
+                        self.learning, "session"
+                    ):
+                        current = self.learning.session(learner)
+                        if not current or not current.pending_confirmation:
+                            await self._move_keyboard(keyboard, event)
 
         self.store.save_marker(page["marker"])
+
+    async def _move_keyboard(
+        self,
+        old: dict | None,
+        event: IncomingEvent,
+        mid: str = "",
+        image: dict[str, str] | None = None,
+    ) -> None:
+        self.store._set(keyboard_key(event.chat_id), json.dumps({"id": mid, "image": image}))
+        previous = old["id"] if old is not None else event.message_id
+        if not previous or previous == mid or (old is None and event.has_other_attachments):
+            return
+        try:
+            await self.client.remove_keyboard(previous, old.get("image") if old else None)
+        except MaxApiError as exc:
+            logger.info("MAX · Старые кнопки не скрыты (HTTP %s)", exc.status_code or "—")
+
+    def _keyboard(self, chat_id: int) -> dict | None:
+        saved = self.store._get(keyboard_key(chat_id))
+        return json.loads(saved) if saved is not None else None
 
     async def _read_pages(self, queue: asyncio.Queue) -> None:
         failures = 0

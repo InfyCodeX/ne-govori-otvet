@@ -258,6 +258,14 @@ class MaxClient:
             raise MaxProtocolError("MAX API не подтвердил создание сообщения.")
         return data
 
+    async def remove_keyboard(self, message_id: str, image: dict[str, str] | None = None) -> None:
+        attachments = [{"type": "image", "payload": image}] if image else []
+        result = await self._request(
+            "PUT", "/messages", params={"message_id": message_id}, json={"attachments": attachments}
+        )
+        if result.get("success") is not True:
+            raise MaxProtocolError("MAX не подтвердил удаление кнопок.")
+
     async def upload_image(self, path: Path) -> str:
         upload = await self._request("POST", "/uploads", params={"type": "image"})
         url = upload.get("url")
