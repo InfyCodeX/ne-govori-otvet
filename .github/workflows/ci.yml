@@ -11,8 +11,8 @@ jobs:
         os: [ubuntu-latest, windows-latest]
     runs-on: ${{ matrix.os }}
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-python@v5
+      - uses: actions/checkout@v5
+      - uses: actions/setup-python@v6
         with:
           python-version: '3.11'
           cache: pip
@@ -25,7 +25,7 @@ jobs:
   docker:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
       - run: docker build -t ne-govori-otvet:ci .
       - name: Start application
         run: docker run -d --name bot-smoke -p 127.0.0.1:8000:8000 -e BOT_MODE=demo ne-govori-otvet:ci
