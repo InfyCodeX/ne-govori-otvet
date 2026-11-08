@@ -2,6 +2,7 @@ import hashlib
 import re
 import secrets
 from collections.abc import Iterable
+from pathlib import Path
 
 ROUNDING = "Округление по условию"
 PERCENTAGES = "Проценты"
@@ -75,6 +76,18 @@ TOPICS = {
 }
 
 MAP_TOPICS = frozenset(label for label, _ in TOPICS.values() if label not in {REVIEW, "Другое"})
+TOPIC_CATALOG = tuple(Path(__file__).with_name("topic_catalog.txt").read_text("utf-8").splitlines())
+
+
+def _topic_key(skill: str) -> str:
+    return " ".join(skill.casefold().replace("ё", "е").split())
+
+
+_CATALOG_BY_NAME = {_topic_key(label): label for label in TOPIC_CATALOG}
+
+
+def catalog_topic(skill: str) -> str | None:
+    return _CATALOG_BY_NAME.get(_topic_key(skill))
 
 
 def valid_topic(skill: str) -> bool:

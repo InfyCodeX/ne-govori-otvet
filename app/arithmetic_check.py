@@ -4,7 +4,7 @@ import ast
 import copy
 import re
 from fractions import Fraction
-from math import isqrt
+from math import comb, factorial, isqrt
 from operator import add, mul, sub, truediv
 
 from app.learning_models import TutorAnalysis
@@ -19,6 +19,7 @@ from app.math_check import (
 
 _OPERATIONS = {ast.Add: add, ast.Sub: sub, ast.Mult: mul, ast.Div: truediv}
 _SUPERSCRIPTS = str.maketrans("⁰¹²³⁴⁵⁶⁷⁸⁹⁻⁺", "0123456789-+")
+_WEEKDAYS = ("понедельник", "вторник", "среда", "четверг", "пятница", "суббота", "воскресенье")
 
 
 def _notation(source: str) -> str:
@@ -264,6 +265,70 @@ def checked_order_explanation(
     except (ValueError, ArithmeticError, SyntaxError, RecursionError):
         pass
     return None
+
+
+def checked_calendar(problem: str, steps: list[str]) -> TutorAnalysis | None:
+    weekdays = "|".join(_WEEKDAYS)
+    task = re.fullmatch(
+        rf"(?:если\s+)?сегодня\s+({weekdays})\s*[,.]\s*"
+        r"какой\s+(?:будет\s+)?день\s+недели\s+(?:будет\s+)?через\s+"
+        r"([0-9]{1,6})\s+(?:день|дня|дней)\s*\??",
+        problem.strip().casefold(),
+    )
+    if task is None or len(steps) != 1:
+        return None
+    answer = re.fullmatch(
+        rf"(?:ответ\s*:\s*)?({weekdays})(?:\s*,\s*(?:потому что|так как)\s+.+)?[.!]?",
+        steps[0].strip().casefold(),
+    )
+    if answer is None:
+        return None
+    expected = (_WEEKDAYS.index(task[1]) + int(task[2])) % len(_WEEKDAYS)
+    if answer[1] == _WEEKDAYS[expected]:
+        return None
+    return TutorAnalysis(
+        status="error",
+        first_error_step=1,
+        skill="Задачи на календарные вычисления",
+        question="Сколько дней остаётся после отсчёта целых недель?",
+        hint="После каждой полной недели день недели совпадает с исходным.",
+        detail="Раздели число дней на длину недели с остатком. Отсчитай оставшиеся дни, "
+        "начиная со следующего дня после указанного в условии.",
+        discovery="Исправь названный день недели и объясни отсчёт.",
+    )
+
+
+def checked_binomial(problem: str, steps: list[str]) -> TutorAnalysis | None:
+    number = r"([0-9]{1,2})"
+    match = re.fullmatch(
+        rf"(?:вычисли(?:те)?\s*:?\s*)?[CС]\(\s*{number}\s*[,;]\s*{number}\s*\)\s*[.?=]?",
+        problem.strip(),
+        re.I,
+    )
+    if match is None or not steps:
+        return None
+    n, k = map(int, match.groups())
+    if k > n or n > 20:
+        return None
+    formula = steps[0].split("=", 1)[0]
+    ratio = re.fullmatch(rf"{number}![/÷:]\({number}![*×·]{number}!\)", re.sub(r"\s+", "", formula))
+    if ratio is None:
+        return None
+    numerator, left, right = map(int, ratio.groups())
+    if max(numerator, left, right) > 20:
+        return None
+    if factorial(numerator) == comb(n, k) * factorial(left) * factorial(right):
+        return None
+    return TutorAnalysis(
+        status="error",
+        first_error_step=1,
+        skill="Биномиальные коэффициенты",
+        question="Какие факториалы входят в формулу биномиального коэффициента?",
+        hint="Сверь число выбираемых элементов и число оставшихся.",
+        detail="В знаменателе нужны факториалы обоих этих чисел. "
+        "Проверь аргументы факториалов отдельно, затем пересчитай частное.",
+        discovery="Исправь первое неверное выражение и объясни выбор знаменателя.",
+    )
 
 
 def checked_arithmetic(problem: str, steps: list[str]) -> TutorAnalysis | None:
