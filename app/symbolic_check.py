@@ -384,6 +384,43 @@ def _system(math, problem: str, steps: list[str]):
     return _analysis(None, set(assignments) == set(symbols), "Уравнения")
 
 
+def _parameter_counterexample(math, problem: str, steps: list[str]) -> TutorAnalysis | None:
+    match = re.fullmatch(
+        r"при каких (?:значениях параметра )?([abctz])\s+система\s+"
+        r"(.+?)\s+и\s+(.+?)\s+имеет решения[?.!]?",
+        problem.casefold().strip(),
+    )
+    if match is None or len(steps) != 1:
+        return None
+    parameter, *rows = match.groups()
+    universal = re.fullmatch(
+        rf"(?:при|для)\s+всех\s+{parameter}\s*(?:(≠|!=)\s*0)?"
+        r"(?:\s*,\s*(?:(?:потому что|так как)\s+.+|"
+        r"(?:первое|второе) уравнение можно разделить на [abctz]))?\s*[.!]?",
+        steps[0].casefold().strip(),
+    )
+    if universal is None:
+        return None
+    equations = []
+    for row in rows:
+        relations, restrictions, _ = math.relation(row)
+        if restrictions or len(relations) != 1 or not isinstance(relations[0], math.sp.Equality):
+            return None
+        equations.extend(relations)
+    symbols = [math.symbols[name] for name in "xy"]
+    param = math.symbols[parameter]
+    if set().union(*(eq.free_symbols for eq in equations)) != {*symbols, param}:
+        return None
+    matrix, values = math.sp.linear_eq_to_matrix(equations, symbols)
+    for number in (-2, -1, 0, 1, 2):
+        if not number and universal[1]:
+            continue
+        left = matrix.subs(param, number)
+        if left.rank() < left.row_join(values.subs(param, number)).rank():
+            return _analysis(1, False, "Системы уравнений с параметрами")
+    return None
+
+
 def _function(math, problem: str, steps: list[str]):
     sp = math.sp
     match = re.fullmatch(r"(?:y|f\(x\))\s*=\s*(.+)", _text(problem))
@@ -432,6 +469,8 @@ def _check(problem: str, steps: list[str]) -> TutorAnalysis | None:
     math = _Math()
     sp = math.sp
     problem = _condition(problem)
+    if counterexample := _parameter_counterexample(math, problem, steps):
+        return counterexample
     if (";" in problem or "\n" in problem) and "=" in problem:
         return _system(math, problem, steps)
     if re.match(r"(?:y|f\(x\))\s*=", _text(problem)):

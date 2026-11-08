@@ -18,6 +18,7 @@ from app.skills import (
     REVIEW,
     ROUNDING,
     UNITS,
+    catalog_topic,
     fallback_exercise,
     geometry_skill,
     practice_shape_matches,
@@ -757,7 +758,7 @@ class LearningService:
             previous and normalize(previous.problem) == normalize(candidate.problem)
         )
         correcting = bool(same_problem and previous.awaiting_correction)
-        from app.arithmetic_check import checked_arithmetic
+        from app.arithmetic_check import checked_arithmetic, checked_binomial, checked_calendar
         from app.math_check import check_linear
         from app.quadratic_check import checked_quadratic, quadratic_chain_error
 
@@ -765,6 +766,8 @@ class LearningService:
         analysis = (
             reviewed
             or checked_arithmetic(candidate.problem, candidate.steps)
+            or checked_binomial(candidate.problem, candidate.steps)
+            or checked_calendar(candidate.problem, candidate.steps)
             or checked_quadratic(candidate.problem, candidate.steps)
         )
         if analysis is None and self.settings.ai_owner_managed:
@@ -840,7 +843,12 @@ class LearningService:
             error_step = (
                 candidate.steps[analysis.first_error_step - 1] if analysis.first_error_step else ""
             )
-            analysis.skill = canonical_skill(analysis.skill, error_step, candidate.problem)
+            local_topic = None if model_analysis else catalog_topic(analysis.skill)
+            analysis.skill = local_topic or canonical_skill(
+                analysis.skill, error_step, candidate.problem
+            )
+            if local_topic and analysis.status == "error":
+                self.store.register_topic(learner, local_topic)
             if (
                 analysis.status == "error"
                 and model_analysis
@@ -866,7 +874,14 @@ class LearningService:
                             topic,
                         )
                         canonical = canonical_skill(topic, error_step, candidate.problem)
-                        analysis.skill = topic if canonical == REVIEW else canonical
+                        if canonical == "Арифметика" and topic != "Арифметические действия":
+                            from app.arithmetic_check import numeric_chain_mismatch
+
+                            if numeric_chain_mismatch(error_step):
+                                topic = canonical
+                        analysis.skill = catalog_topic(topic) or (
+                            topic if canonical == REVIEW else canonical
+                        )
                         self.store.register_topic(learner, analysis.skill)
                 except TutorError:
                     logger.warning("Карта · Не удалось уточнить тему ошибки")
