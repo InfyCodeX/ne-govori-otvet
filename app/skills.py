@@ -8,6 +8,15 @@ PERCENTAGES = "Проценты"
 REVIEW = "Разбор решения"
 PROPORTIONS = "Пропорции"
 UNITS = "Единицы измерения"
+TRAPEZOID_AREA = "Площадь трапеции"
+TRAPEZOID_MIDLINE = "Средняя линия трапеции"
+TRIANGLE_AREA = "Площадь треугольника"
+
+_GEOMETRY_SKILLS = {
+    TRAPEZOID_AREA: (r"трапец", r"площад", "s"),
+    TRAPEZOID_MIDLINE: (r"трапец", r"средн\w*\s+лини", "m"),
+    TRIANGLE_AREA: (r"треугольн", r"площад", "s"),
+}
 
 TOPICS = {
     "brackets": (
@@ -48,6 +57,18 @@ TOPICS = {
         "Задай формулу в виде f(x) и попроси вычислить f(число).",
     ),
     "geometry": ("Геометрия", "Нужна геометрическая задача с достаточными исходными данными."),
+    "trapezoid_area": (
+        TRAPEZOID_AREA,
+        "Нужно найти площадь трапеции по основаниям и высоте или по средней линии и высоте.",
+    ),
+    "trapezoid_midline": (
+        TRAPEZOID_MIDLINE,
+        "Нужно найти среднюю линию трапеции или восстановить основание по средней линии.",
+    ),
+    "triangle_area": (
+        TRIANGLE_AREA,
+        "Нужно найти площадь треугольника по основанию и проведённой к нему высоте.",
+    ),
     "logic": ("Логика рассуждений", "Нужна задача на логический вывод из достаточных условий."),
     "review": (REVIEW, "Нужна однозначная школьная математическая задача."),
     "other": ("Другое", "Нужна однозначная школьная математическая задача."),
@@ -70,6 +91,47 @@ def valid_topic(skill: str) -> bool:
             "неизвестно",
         }
     )
+
+
+def geometry_skill(skill: str, error_step: str, problem: str) -> str | None:
+    label = skill.casefold().strip()
+    for topic, (shape, concept, _) in _GEOMETRY_SKILLS.items():
+        if re.search(shape, label) and re.search(concept, label):
+            return topic
+    if re.fullmatch(
+        r"(?:геометри\w*|трапеци\w*|треугольник\w*|(?:формула )?площад\w*(?: фигуры)?"
+        r"|средн\w*\s+лини\w*)",
+        label,
+    ):
+        step = error_step.casefold().strip()
+        candidates = [
+            topic
+            for topic, (shape, concept, symbol) in _GEOMETRY_SKILLS.items()
+            if re.search(shape, problem, re.I)
+            and (
+                re.search(concept, step)
+                or re.fullmatch(rf"{symbol}\s*=\s*(?=.*[a-z])[a-z\d\s()+*/÷:.,−-]+", step)
+            )
+        ]
+        if len(candidates) == 1:
+            return candidates[0]
+    if valid_topic(skill) and (
+        re.search(r"теорем\w*\s+пифагор", label)
+        or (
+            re.search(
+                r"(?:площад|периметр|угл|окружност|подоби|диагонал|об[ъь][её]м|биссектрис)"
+                r"\w*\s",
+                label,
+            )
+            and re.search(
+                r"треугольн|многоугольн|трапец|параллелограмм|прямоугольн|ромб|квадрат|круг"
+                r"|окруж|куб|параллелепипед|призм|цилиндр|пирамид|конус|сфер|шар",
+                label,
+            )
+        )
+    ):
+        return skill
+    return None
 
 
 def topic_id(skill: str) -> str:
@@ -109,6 +171,12 @@ def fallback_exercise(skill: str, previous: str, *, number: int | None = None) -
             "Статистика": f"Даны результаты четырёх измерений: {n}, {n + 1}, "
             f"{n + 4}, {n + 7}. Найди среднее арифметическое и медиану.",
             "Геометрия": f"Стороны прямоугольника {n} см и {n + 3} см. Найди его периметр.",
+            TRAPEZOID_AREA: f"Основания трапеции равны {n + 2} см и {n + 8} см, "
+            f"а высота равна {n + 1} см. Найди площадь трапеции.",
+            TRAPEZOID_MIDLINE: f"Основания трапеции равны {n + 2} см и {n + 8} см. "
+            "Найди её среднюю линию.",
+            TRIANGLE_AREA: f"Основание треугольника равно {n + 3} см, "
+            f"а высота к нему равна {n + 2} см. Найди площадь треугольника.",
             "Логика рассуждений": f"На полке стоят {n} красных и {n + 1} синих книг. "
             "Сколько книг нужно взять не глядя, чтобы среди них обязательно была синяя?",
             REVIEW: f"Продолжи последовательность ещё на два числа: {n}, {n + 3}, {n + 6}. "
@@ -123,6 +191,9 @@ def fallback_exercise(skill: str, previous: str, *, number: int | None = None) -
 def practice_shape_matches(skill: str, problem: str) -> bool:
 
     text = problem.casefold()
+    if skill in _GEOMETRY_SKILLS:
+        shape, concept, _ = _GEOMETRY_SKILLS[skill]
+        return bool(re.search(shape, text) and re.search(concept, text))
     if skill == ROUNDING:
         return bool(re.search(r"округл|целых|целое|наибольш|наименьш|максимальн|минимальн", text))
     if skill == PERCENTAGES:

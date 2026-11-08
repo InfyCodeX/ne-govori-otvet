@@ -19,6 +19,7 @@ from app.skills import (
     ROUNDING,
     UNITS,
     fallback_exercise,
+    geometry_skill,
     practice_shape_matches,
     topic_buttons,
     topic_id,
@@ -99,14 +100,22 @@ def without_repeated_condition(extraction: SubmissionExtraction) -> SubmissionEx
     return extraction.model_copy(update={"problem": problem, "steps": steps})
 
 
-def canonical_skill(skill: str, error_step: str = "") -> str:
+def canonical_skill(skill: str, error_step: str = "", problem: str = "") -> str:
 
     if re.match(r"\s*(?:затем\s+|поэтому\s+)?округл\w*\b", error_step, re.I):
         return ROUNDING
 
     if contains_answer(skill) or re.search(r"[=\d]", skill):
         return REVIEW
+    specific = geometry_skill(skill, error_step, problem)
     value = skill.casefold()
+    if specific or re.search(r"геометри|площад|периметр|треугольн", value):
+        from app.arithmetic_check import numeric_chain_mismatch
+
+        if numeric_chain_mismatch(error_step):
+            return "Арифметика"
+    if specific:
+        return specific
     for fragments, category in (
         (("вероятн", "равновозмож", "число исходов", "подсчёт исходов"), "Вероятность"),
         (("статист", "медиан", "среднее арифмет", "размах"), "Статистика"),
@@ -831,7 +840,7 @@ class LearningService:
             error_step = (
                 candidate.steps[analysis.first_error_step - 1] if analysis.first_error_step else ""
             )
-            analysis.skill = canonical_skill(analysis.skill, error_step)
+            analysis.skill = canonical_skill(analysis.skill, error_step, candidate.problem)
             if (
                 analysis.status == "error"
                 and model_analysis
@@ -856,7 +865,7 @@ class LearningService:
                             ),
                             topic,
                         )
-                        canonical = canonical_skill(topic, error_step)
+                        canonical = canonical_skill(topic, error_step, candidate.problem)
                         analysis.skill = topic if canonical == REVIEW else canonical
                         self.store.register_topic(learner, analysis.skill)
                 except TutorError:
