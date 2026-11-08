@@ -199,6 +199,19 @@ def _bounded_tree(tree: ast.expr) -> bool:
     return True
 
 
+def numeric_chain_mismatch(step: str) -> bool:
+    parts = step.split("=")
+    if re.fullmatch(r"[a-zA-Zа-яА-ЯёЁ][\w₁₂]{0,8}", parts[0].strip()):
+        parts = parts[1:]
+    if not 2 <= len(parts) <= 12:
+        return False
+    try:
+        values = [_value(_tree(part)) for part in parts]
+    except (ValueError, ArithmeticError, RecursionError, SyntaxError):
+        return False
+    return any(value != values[0] for value in values[1:])
+
+
 def checked_order_explanation(
     steps: list[str], error_index: int, corrected: str, reason: str
 ) -> bool | None:
