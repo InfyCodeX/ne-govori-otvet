@@ -109,6 +109,7 @@
 │   ├── learning_models.py        Форматы сессии, анализа и ответов
 │   ├── submissions.py            Разбор записи ученика
 │   ├── skills.py                 Темы и резервные упражнения
+│   ├── topic_catalog.txt          Каталог тем для карты слабых мест
 │   ├── input_policy.py           Проверка входных сообщений
 │   ├── arithmetic_check.py       Числовые вычисления
 │   ├── math_check.py             Линейные уравнения
@@ -132,7 +133,9 @@
 │   └── __init__.py
 ├── scripts/
 │   └── manage.ps1                Локальный запуск через Python
-├── .github/workflows/ci.yml      Автоматическая проверка сборки
+├── .github/
+│   ├── architecture.svg          Схема архитектуры
+│   └── workflows/ci.yml          Автоматическая проверка сборки
 ├── .vscode/
 │   ├── extensions.json
 │   └── launch.json
