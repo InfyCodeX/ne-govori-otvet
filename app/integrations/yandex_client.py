@@ -419,7 +419,12 @@ class YandexTutor:
         logger.info("Яндекс AI · Ответ получен: %s", operation)
         return result
 
-    async def analyze(self, problem: str, steps: list[str]) -> TutorAnalysis:
+    async def analyze_once(self, problem: str, steps: list[str]) -> TutorAnalysis:
+        return await self.analyze(problem, steps, extended=self._budget_store is None)
+
+    async def analyze(
+        self, problem: str, steps: list[str], *, extended: bool = False
+    ) -> TutorAnalysis:
         from app.math_check import check_linear
 
         if (
@@ -437,6 +442,7 @@ class YandexTutor:
             TutorAnalysis.model_json_schema(),
             operation="проверка решения",
             reasoning=check_linear(problem, steps) is None,
+            extended=extended,
         )
         try:
             if set(result) != set(TutorAnalysis.model_fields):

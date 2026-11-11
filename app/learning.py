@@ -256,6 +256,26 @@ class LearningService:
             self.settings.ai_daily_request_limit, learner=learner
         )
 
+    async def _initial_analysis(self, learner: str, candidate: StudySession) -> TutorAnalysis:
+        analyze = getattr(self.tutor, "analyze_once", self.tutor.analyze)
+        votes = {}
+        for attempt in range(3):
+            if attempt and not self._reserve_ai(learner):
+                raise TutorError("Достигнут лимит запросов на проверку.", kind="rate_limit")
+            analysis = await analyze(candidate.problem, candidate.steps)
+            vote = (analysis.status, analysis.first_error_step)
+            if vote in votes:
+                return analysis.model_copy(update={"complete": analysis.complete and votes[vote]})
+            votes[vote] = analysis.complete
+        return TutorAnalysis(
+            status="uncertain",
+            skill=REVIEW,
+            question="Проверки дали разные результаты. Уточни переходы между действиями.",
+            hint="Распиши промежуточные вычисления.",
+            detail="Запиши каждое преобразование отдельной строкой и укажи применённое правило.",
+            discovery="Сравни соседние действия и объясни, как одно получается из другого.",
+        )
+
     def session(self, learner: str) -> StudySession | None:
         data = self.store.learning_session(learner)
         return StudySession.model_validate(data) if data else None
@@ -795,7 +815,14 @@ class LearningService:
             if not self._reserve_ai(learner):
                 return self._limit()
             try:
-                analysis = await self.tutor.analyze(candidate.problem, candidate.steps)
+                if not correcting and (
+                    not same_problem
+                    or previous.analysis is None
+                    or previous.analysis.status == "uncertain"
+                ):
+                    analysis = await self._initial_analysis(learner, candidate)
+                else:
+                    analysis = await self.tutor.analyze(candidate.problem, candidate.steps)
             except TutorError as error:
                 if previous is None:
                     self.save(learner, candidate)
