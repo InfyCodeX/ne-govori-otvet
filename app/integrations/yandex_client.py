@@ -260,6 +260,7 @@ class YandexTutor:
         mime_type: str | None = None,
         reasoning: bool = False,
         extended: bool = False,
+        retry_output_limit: bool = True,
     ) -> dict[str, Any]:
         output_limit = 4096 if reasoning else MAX_OUTPUT_TOKENS
         if extended:
@@ -400,7 +401,12 @@ class YandexTutor:
             if not isinstance(result, dict) or not _clean_output(result):
                 raise ValueError
         except (ValueError, KeyError, TypeError, AttributeError, IndexError):
-            if output_limit_reached and not extended and self._budget_store is None:
+            if (
+                retry_output_limit
+                and output_limit_reached
+                and not extended
+                and self._budget_store is None
+            ):
                 logger.info("Яндекс AI · Повтор с увеличенным лимитом: %s", operation)
                 return await self._complete(
                     system,
@@ -491,6 +497,8 @@ class YandexTutor:
             operation="распознавание фото" if image is not None else "разбор текста",
             image=image,
             mime_type=mime_type,
+            extended=image is not None and self._budget_store is None,
+            retry_output_limit=image is None,
         )
         try:
             extraction = SubmissionExtraction.model_validate(result, strict=True)
@@ -527,6 +535,7 @@ class YandexTutor:
             ExplanationAssessment.model_json_schema(),
             operation="проверка объяснения",
             reasoning=True,
+            retry_output_limit=False,
         )
         try:
             assessment = ExplanationAssessment.model_validate(result, strict=True)
@@ -590,6 +599,7 @@ class YandexTutor:
             PracticeAssessment.model_json_schema(),
             operation="проверка задания для тренировки",
             reasoning=True,
+            retry_output_limit=False,
         )
         try:
             return PracticeAssessment.model_validate(result, strict=True)
@@ -666,6 +676,7 @@ class YandexTutor:
                 "additionalProperties": False,
             },
             operation="уточнение темы ошибки",
+            retry_output_limit=False,
         )
         number, topic = result.get("topic_number"), result.get("skill")
         if set(result) != {"topic_number", "skill"} or type(number) is not int:

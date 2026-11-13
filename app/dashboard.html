@@ -274,7 +274,7 @@
       setBusy(true);
       showReply(file ? 'Читаем фотографию… Это может занять около минуты.' : 'Разбираемся…');
       const controller = new AbortController();
-      const timer = setTimeout(() => controller.abort(), 150000);
+      const timer = setTimeout(() => controller.abort(), 360000);
       let receivedResponse = false;
       try {
         if (action === 'example') {

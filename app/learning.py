@@ -5,12 +5,19 @@ import hashlib
 import logging
 import re
 import secrets
-from typing import Any
+from collections.abc import Awaitable, Callable, Hashable
+from functools import partial
+from typing import Any, TypeVar
 
 from app.config import Settings
 from app.domain import LearningStore, TutorError, TutorPort
 from app.input_policy import input_feedback
-from app.learning_models import StudySession, SubmissionExtraction, TutorAnalysis, TutorReply
+from app.learning_models import (
+    StudySession,
+    SubmissionExtraction,
+    TutorAnalysis,
+    TutorReply,
+)
 from app.skills import (
     MAP_TOPICS,
     PERCENTAGES,
@@ -50,6 +57,7 @@ EXERCISES = (
     },
 )
 logger = logging.getLogger(__name__)
+Result = TypeVar("Result")
 SKILL = "Раскрытие скобок"
 BUTTONS = [
     [{"type": "callback", "text": "Где я свернул не туда?", "payload": "first_error"}],
@@ -99,6 +107,33 @@ def without_repeated_condition(extraction: SubmissionExtraction) -> SubmissionEx
         steps.pop(0)
     problem, steps = clean_transcript(extraction.problem, steps)
     return extraction.model_copy(update={"problem": problem, "steps": steps})
+
+
+def _photo_vote(
+    extraction: SubmissionExtraction,
+) -> tuple[tuple[str, ...], tuple[tuple[str, ...], ...]] | None:
+    if extraction.confidence != "high":
+        return None
+    transcription = without_repeated_condition(extraction)
+    if not transcription.problem.strip() or len(transcription.steps) > 30:
+        return None
+
+    def line_key(line: str) -> tuple[str, ...]:
+        # Ignore layout spaces without merging tokens such as two '*' into '**'.
+        return tuple(
+            re.findall(
+                r"\*\*|<=|>=|!=|==|[=+*/^<>≤≥()\[\]-]|[^\s=+*/^<>≤≥()\[\]-]+",
+                line.replace("−", "-"),
+            )
+        )
+
+    return line_key(transcription.problem), tuple(map(line_key, transcription.steps))
+
+
+def _topic_vote(topic: str) -> str | None:
+    if not valid_topic(topic):
+        return None
+    return catalog_topic(topic) or " ".join(topic.casefold().replace("ё", "е").split())
 
 
 def canonical_skill(skill: str, error_step: str = "", problem: str = "") -> str:
@@ -256,17 +291,55 @@ class LearningService:
             self.settings.ai_daily_request_limit, learner=learner
         )
 
-    async def _initial_analysis(self, learner: str, candidate: StudySession) -> TutorAnalysis:
-        analyze = getattr(self.tutor, "analyze_once", self.tutor.analyze)
-        votes = {}
+    async def _confirm_ai(
+        self,
+        learner: str,
+        request: Callable[[], Awaitable[Result]],
+        key: Callable[[Result], Hashable | None],
+        *,
+        retry_unavailable: bool = False,
+    ) -> tuple[Result, Result] | None:
+        """Return two matching usable results, with at most three attempts."""
+        votes: dict[Hashable, Result] = {}
+        failure: TutorError | None = None
+        answered = False
         for attempt in range(3):
-            if attempt and not self._reserve_ai(learner):
-                raise TutorError("Достигнут лимит запросов на проверку.", kind="rate_limit")
-            analysis = await analyze(candidate.problem, candidate.steps)
-            vote = (analysis.status, analysis.first_error_step)
-            if vote in votes:
-                return analysis.model_copy(update={"complete": analysis.complete and votes[vote]})
-            votes[vote] = analysis.complete
+            if not self._reserve_ai(learner):
+                raise TutorError("Достигнут лимит запросов на проверку.", kind="request_limit")
+            try:
+                result = await request()
+            except TutorError as error:
+                unreadable = (
+                    error.kind == "protocol"
+                    and error.status_code is None
+                    and (not error.output_limit or retry_unavailable)
+                )
+                if not unreadable and not (retry_unavailable and error.kind == "unavailable"):
+                    raise
+                failure = error
+            else:
+                answered = True
+                vote = key(result)
+                if vote is not None:
+                    if vote in votes:
+                        return votes[vote], result
+                    votes[vote] = result
+            if attempt == 1 and not votes:
+                break
+        if not answered and failure is not None:
+            raise failure
+        return None
+
+    async def _confirmed_analysis(self, learner: str, candidate: StudySession) -> TutorAnalysis:
+        analyze = getattr(self.tutor, "analyze_once", self.tutor.analyze)
+        match = await self._confirm_ai(
+            learner,
+            partial(analyze, candidate.problem, candidate.steps),
+            lambda result: (result.status, result.first_error_step),
+        )
+        if match:
+            first, second = match
+            return second.model_copy(update={"complete": first.complete and second.complete})
         return TutorAnalysis(
             status="uncertain",
             skill=REVIEW,
@@ -318,6 +391,8 @@ class LearningService:
         )
 
     def _provider_failure(self, error: TutorError, *, stage: str = "") -> TutorReply:
+        if error.kind == "request_limit":
+            return self._limit()
         self.last_provider_error = True
         kind = error.kind
         reason = {
@@ -362,7 +437,10 @@ class LearningService:
 
     @staticmethod
     def _limit() -> TutorReply:
-        return LearningService._unavailable()
+        return TutorReply(
+            text="Лимит запросов к ИИ исчерпан. Текущие записи сохранены. "
+            "Можно вернуться к задаче позже или открыть учебный пример /example."
+        )
 
     def welcome(self) -> TutorReply:
         mode = (
@@ -439,8 +517,6 @@ class LearningService:
             return TutorReply(
                 text="Пришли короткое условие и до 30 действий, всего до 12000 символов."
             )
-        if not self._reserve_ai(learner):
-            return self._limit()
         previous = self.session(learner)
         context = text
         if previous and not previous.pending_confirmation and image is None:
@@ -451,9 +527,28 @@ class LearningService:
                 + text
             )
         try:
-            extraction = await self.tutor.extract_submission(
-                context, image=image, mime_type=mime_type
-            )
+            if image is None:
+                if not self._reserve_ai(learner):
+                    return self._limit()
+                extraction = await self.tutor.extract_submission(
+                    context, image=None, mime_type=None
+                )
+            else:
+                match = await self._confirm_ai(
+                    learner,
+                    partial(
+                        self.tutor.extract_submission, context, image=image, mime_type=mime_type
+                    ),
+                    _photo_vote,
+                    retry_unavailable=True,
+                )
+                if not match:
+                    self.last_provider_error = False
+                    return TutorReply(
+                        text="Не удалось уверенно прочитать одни и те же строки на снимке. "
+                        "Пришли более чёткое фото или запиши условие и действия текстом."
+                    )
+                extraction = match[1]
         except TutorError as error:
             return self._provider_failure(error)
         self.last_provider_error = False
@@ -812,18 +907,11 @@ class LearningService:
         if analysis is not None:
             candidate.source = "example" if reviewed else "ai"
         elif self.ai_active:
-            if not self._reserve_ai(learner):
-                return self._limit()
             try:
-                if not correcting and (
-                    not same_problem
-                    or previous.analysis is None
-                    or previous.analysis.status == "uncertain"
-                ):
-                    analysis = await self._initial_analysis(learner, candidate)
-                else:
-                    analysis = await self.tutor.analyze(candidate.problem, candidate.steps)
+                analysis = await self._confirmed_analysis(learner, candidate)
             except TutorError as error:
+                if error.kind == "request_limit":
+                    return self._limit()
                 if previous is None:
                     self.save(learner, candidate)
                 reply = self._provider_failure(
@@ -879,24 +967,31 @@ class LearningService:
             if (
                 analysis.status == "error"
                 and model_analysis
+                and local_topic is None
                 and self.ai_active
                 and hasattr(self.tutor, "classify_skill")
-                and self._reserve_ai(learner)
             ):
                 analysis.skill = REVIEW
                 try:
-                    topic = await self.tutor.classify_skill(
-                        candidate.problem,
-                        candidate.steps,
-                        analysis.first_error_step,
-                        sorted(self._map_topics(learner)),
+                    known_topics = self._map_topics(learner)
+                    match = await self._confirm_ai(
+                        learner,
+                        partial(
+                            self.tutor.classify_skill,
+                            candidate.problem,
+                            candidate.steps,
+                            analysis.first_error_step,
+                            sorted(known_topics),
+                        ),
+                        _topic_vote,
                     )
-                    if valid_topic(topic):
+                    if match:
+                        topic = match[1]
                         topic = next(
                             (
                                 known
-                                for known in self._map_topics(learner)
-                                if known.casefold() == topic.casefold()
+                                for known in known_topics
+                                if _topic_vote(known) == _topic_vote(topic)
                             ),
                             topic,
                         )
@@ -917,6 +1012,12 @@ class LearningService:
             candidate.rematch_skill = previous.rematch_skill
             candidate.practice_skill = previous.practice_skill
         discovering = bool(correcting and previous.self_discovery)
+        if correcting and analysis.status == "uncertain":
+            return TutorReply(
+                text="Не удалось надёжно проверить исправление. Уточни запись и "
+                "промежуточные действия. Текущая задача сохранена.",
+                buttons=BUTTONS,
+            )
         if discovering:
             advanced = bool(
                 analysis.status == "error"
@@ -957,28 +1058,32 @@ class LearningService:
                     buttons=BUTTONS,
                 )
             if self.ai_active and verified_reason is not True:
-                if not self._reserve_ai(learner):
-                    return self._limit()
                 try:
-                    assessment = await self.tutor.check_explanation(
-                        previous.problem,
-                        previous.steps,
-                        candidate.steps[(previous.analysis.first_error_step or 1) - 1],
-                        explanation,
+                    match = await self._confirm_ai(
+                        learner,
+                        partial(
+                            self.tutor.check_explanation,
+                            previous.problem,
+                            previous.steps,
+                            candidate.steps[(previous.analysis.first_error_step or 1) - 1],
+                            explanation,
+                        ),
+                        lambda result: result.status,
                     )
                 except TutorError as error:
                     previous.correction_draft = candidate.steps[:]
                     self.save(learner, previous)
                     return self._provider_failure(error, stage="explanation")
                 self.last_provider_error = False
-                if assessment.status != "accepted":
+                status = match[1].status if match else "uncertain"
+                if status != "accepted":
                     previous.correction_draft = candidate.steps[:]
                     self.save(learner, previous)
 
                     feedback = (
                         "Твоё объяснение пока не подтверждено. Своими словами укажи правило "
                         "и объясни, почему оно делает выбранное действие допустимым."
-                        if assessment.status == "retry"
+                        if status == "retry"
                         else "Оценка объяснения получилась неоднозначной. Уточни, какое "
                         "правило ты применил и почему его можно использовать в этом действии."
                     )
@@ -986,8 +1091,6 @@ class LearningService:
                         text="Исправленная строка проверена. " + feedback,
                         buttons=BUTTONS,
                     )
-                if analysis.status == "uncertain":
-                    analysis = analysis.model_copy(update={"status": "correct", "complete": False})
             elif verified_reason is not True:
                 reason = explanation.casefold()
                 if not (
@@ -1543,15 +1646,21 @@ class LearningService:
             logger.info("Тренировка · Вариант отклонён локальной проверкой темы")
             return False
         if self.ai_active and hasattr(self.tutor, "validate_practice"):
-            if not self._reserve_ai(learner):
+            try:
+                match = await self._confirm_ai(
+                    learner,
+                    partial(self.tutor.validate_practice, skill, problem),
+                    lambda result: result.matches_skill and result.well_posed,
+                )
+            except TutorError as error:
+                if error.kind != "request_limit":
+                    raise
                 logger.info("Тренировка · Достигнут лимит проверки новых вариантов")
                 return False
-            verdict = await self.tutor.validate_practice(skill, problem)
-            if not verdict.matches_skill:
-                logger.info("Тренировка · Вариант не требует нужного навыка")
-            if not verdict.well_posed:
-                logger.info("Тренировка · Условие неполное или неоднозначное")
-            return verdict.matches_skill and verdict.well_posed
+            if match and match[1].matches_skill and match[1].well_posed:
+                return True
+            logger.info("Тренировка · Соответствие или полнота условия не подтверждены")
+            return False
         return True
 
     def _topic_buttons(self, learner: str, page: int = 0) -> list[list[dict[str, str]]]:
