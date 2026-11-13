@@ -95,6 +95,16 @@ def example_payload() -> dict[str, Any]:
     return {"problem": EXERCISES[0]["problem"], "steps": EXERCISES[0]["wrong"]}
 
 
+def _photo_line_key(line: str) -> tuple[str, ...]:
+    # Ignore layout spaces without merging tokens such as two '*' into '**'.
+    return tuple(
+        re.findall(
+            r"\*\*|<=|>=|!=|==|[=+*/^<>≤≥()\[\]-]|[^\s=+*/^<>≤≥()\[\]-]+",
+            line.replace("−", "-"),
+        )
+    )
+
+
 def without_repeated_condition(extraction: SubmissionExtraction) -> SubmissionExtraction:
 
     steps = []
@@ -103,9 +113,10 @@ def without_repeated_condition(extraction: SubmissionExtraction) -> SubmissionEx
         while re.match(r"^\d+[.)]\s+", line):
             line = re.sub(r"^\d+[.)]\s+", "", line, count=1)
         steps.append(line if line.strip() else original)
-    while steps and normalize(steps[0]) == normalize(extraction.problem):
-        steps.pop(0)
     problem, steps = clean_transcript(extraction.problem, steps)
+    condition = _photo_line_key(problem)
+    while steps and _photo_line_key(steps[0]) == condition:
+        steps.pop(0)
     return extraction.model_copy(update={"problem": problem, "steps": steps})
 
 
@@ -118,16 +129,7 @@ def _photo_vote(
     if not transcription.problem.strip() or len(transcription.steps) > 30:
         return None
 
-    def line_key(line: str) -> tuple[str, ...]:
-        # Ignore layout spaces without merging tokens such as two '*' into '**'.
-        return tuple(
-            re.findall(
-                r"\*\*|<=|>=|!=|==|[=+*/^<>≤≥()\[\]-]|[^\s=+*/^<>≤≥()\[\]-]+",
-                line.replace("−", "-"),
-            )
-        )
-
-    return line_key(transcription.problem), tuple(map(line_key, transcription.steps))
+    return _photo_line_key(transcription.problem), tuple(map(_photo_line_key, transcription.steps))
 
 
 def _topic_vote(topic: str) -> str | None:
@@ -1405,15 +1407,11 @@ class LearningService:
                     buttons=self._topic_buttons(learner) + BACK_BUTTONS,
                 )
             if self.ai_active:
-                if not self._reserve_ai(learner):
-                    return self._limit()
-
                 try:
                     problem = await self._training_problem(
                         learner,
                         skill,
                         session.problem if session else "Тренировка навыка: " + skill,
-                        allow_fallback=True,
                     )
                 except TutorError as error:
                     return self._provider_failure(error)
@@ -1466,11 +1464,9 @@ class LearningService:
                 problem = exercise["problem"]
                 if self.store.exercise_seen(learner, problem):
                     return TutorReply(text="Учебные примеры уже пройдены. Пришли свою задачу.")
-            elif self._reserve_ai(learner):
+            elif self.ai_active:
                 try:
-                    problem = await self._training_problem(
-                        learner, rematch_skill, session.problem, allow_fallback=True
-                    )
+                    problem = await self._training_problem(learner, rematch_skill, session.problem)
                 except TutorError as error:
                     return self._provider_failure(error)
             else:
@@ -1645,23 +1641,15 @@ class LearningService:
         if not practice_shape_matches(skill, problem):
             logger.info("Тренировка · Вариант отклонён локальной проверкой темы")
             return False
-        if self.ai_active and hasattr(self.tutor, "validate_practice"):
-            try:
-                match = await self._confirm_ai(
-                    learner,
-                    partial(self.tutor.validate_practice, skill, problem),
-                    lambda result: result.matches_skill and result.well_posed,
-                )
-            except TutorError as error:
-                if error.kind != "request_limit":
-                    raise
-                logger.info("Тренировка · Достигнут лимит проверки новых вариантов")
-                return False
-            if match and match[1].matches_skill and match[1].well_posed:
-                return True
-            logger.info("Тренировка · Соответствие или полнота условия не подтверждены")
-            return False
-        return True
+        match = await self._confirm_ai(
+            learner,
+            partial(self.tutor.validate_practice, skill, problem),
+            lambda result: result.matches_skill and result.well_posed,
+        )
+        if match and match[1].matches_skill and match[1].well_posed:
+            return True
+        logger.info("Тренировка · Соответствие или полнота условия не подтверждены")
+        return False
 
     def _topic_buttons(self, learner: str, page: int = 0) -> list[list[dict[str, str]]]:
         skills = [row[0] for row in self._map_rows(learner)]
@@ -1682,31 +1670,48 @@ class LearningService:
                 )
         return buttons
 
-    async def _training_problem(
-        self, learner: str, skill: str, previous: str, *, allow_fallback: bool = False
-    ) -> str | None:
-        try:
-            problem = await self.tutor.generate_rematch(skill, previous)
-            if not isinstance(problem, str) or not 1 <= len(problem.strip()) <= 1500:
-                logger.info("Тренировка · Некорректная длина условия")
-            elif contains_answer(problem):
-                logger.info("Тренировка · В условии обнаружен ответ")
-            elif normalize(problem) == normalize(previous):
-                logger.info("Тренировка · Вариант повторяет прежнее условие")
-            elif self.store.exercise_seen(learner, problem):
-                logger.info("Тренировка · Вариант уже встречался этому ученику")
-            elif await self._practice_valid(learner, skill, problem):
-                self.store.remember_exercise(learner, problem)
-                logger.info("Тренировка · Выдан проверенный вариант Яндекс AI")
-                return problem
-        except TutorError as error:
-            if not allow_fallback or error.kind != "protocol":
-                raise
-            logger.info("Тренировка · Формат ответа ИИ не прошёл проверку")
-        if allow_fallback:
-            for number in range(2, 18):
-                fallback = fallback_exercise(skill, previous, number=number)
-                if fallback and self.store.remember_exercise(learner, fallback):
-                    logger.info("Тренировка · Выдано резервное задание")
-                    return fallback
+    async def _training_problem(self, learner: str, skill: str, previous: str) -> str | None:
+        rejected = ""
+        seen = {normalize(previous)}
+        for attempt in range(2):
+            if not self._reserve_ai(learner):
+                if attempt == 0:
+                    raise TutorError("Достигнут лимит запросов на проверку.", kind="request_limit")
+                break
+            try:
+                problem = await self.tutor.generate_rematch(
+                    skill, previous, rejected_problem=rejected
+                )
+                if not isinstance(problem, str) or not 1 <= len(problem.strip()) <= 1500:
+                    logger.info("Тренировка · Некорректная длина условия")
+                    continue
+                key = normalize(problem)
+                duplicate = key in seen
+                seen.add(key)
+                rejected = problem
+                if contains_answer(problem):
+                    logger.info("Тренировка · В условии обнаружен ответ")
+                elif duplicate or self.store.exercise_seen(learner, problem):
+                    logger.info("Тренировка · Условие повторяется")
+                elif await self._practice_valid(learner, skill, problem):
+                    self.store.remember_exercise(learner, problem)
+                    logger.info("Тренировка · Выдан проверенный вариант Яндекс AI")
+                    return problem
+            except TutorError as error:
+                if error.kind == "request_limit":
+                    break
+                if error.kind != "protocol":
+                    raise
+                logger.info("Тренировка · Формат ответа ИИ не прошёл проверку")
+                if error.status_code is not None:
+                    break
+        for number in range(2, 18):
+            fallback = fallback_exercise(skill, previous, number=number)
+            if (
+                fallback
+                and normalize(fallback) not in seen
+                and self.store.remember_exercise(learner, fallback)
+            ):
+                logger.info("Тренировка · Выдано резервное задание")
+                return fallback
         return None

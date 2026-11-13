@@ -274,7 +274,8 @@
       setBusy(true);
       showReply(file ? 'Читаем фотографию… Это может занять около минуты.' : 'Разбираемся…');
       const controller = new AbortController();
-      const timer = setTimeout(() => controller.abort(), 360000);
+      const training = action === 'rematch' || action.startsWith('practice_') || /^\/rematch(?:\s|$)/i.test(text || '');
+      const timer = setTimeout(() => controller.abort(), training ? 600000 : 360000);
       let receivedResponse = false;
       try {
         if (action === 'example') {

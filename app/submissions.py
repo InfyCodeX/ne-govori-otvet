@@ -252,8 +252,6 @@ def clean_transcript(problem: str, steps: list[str]) -> tuple[str, list[str]]:
         for line in split_records(row):
             if not _SECTION.fullmatch(line):
                 cleaned.append(line)
-    while cleaned and normalize(cleaned[0]) == normalize(problem):
-        cleaned.pop(0)
     return problem, cleaned
 
 
