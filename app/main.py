@@ -157,7 +157,14 @@ def create_app(
     @application.get("/health/ready")
     async def ready():
         state, config = application.state.worker, application.state.config
-        spent, reserved = application.state.learning.store.ai_budget_totals()
+        learning = application.state.learning
+        spent, reserved = learning.store.ai_budget_totals()
+        budget_mode = "disabled"
+        if learning.ai_active:
+            if config.ai_owner_managed:
+                budget_mode = "owner_managed"
+            elif config.ai_trial_budget_rub > 0:
+                budget_mode = "limited"
         fresh = state.last_poll_monotonic is not None and (
             time.monotonic() - state.last_poll_monotonic < config.max_poll_timeout + 120
         )
@@ -167,12 +174,10 @@ def create_app(
             content={
                 "status": state.status,
                 "mode": config.bot_mode,
-                "ai": (
-                    "unavailable" if application.state.learning.last_provider_error else "yandex"
-                )
-                if application.state.learning.ai_active
+                "ai": ("unavailable" if learning.last_provider_error else "yandex")
+                if learning.ai_active
                 else "not_connected",
-                "ai_budget": "owner_managed" if config.ai_owner_managed else "disabled",
+                "ai_budget": budget_mode,
                 "last_poll_at": state.last_poll_at,
                 "last_error": state.last_error,
                 "incomplete_messages": state.incomplete_messages,
